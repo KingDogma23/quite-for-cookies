@@ -347,6 +347,41 @@ function paintGroups() {
   $("#go").addEventListener("click", runRemoval);
 }
 
+/**
+ * The master switch.
+ *
+ * The other two extensions open with one, and this one had none — reasonable
+ * while every action was a button press, wrong once it gained a job that runs
+ * in the background. It is the same setting as the auto-clear checkbox rather
+ * than a second control beside it: two switches for one behaviour is how they
+ * come to disagree.
+ */
+async function paintMaster() {
+  const prefs = await readGlobalPrefs();
+  const box = $("#enabled");
+  $("#master").hidden = false;
+  box.checked = prefs.autoClear;
+  $("#stateText").textContent = prefs.autoClear ? "Clearing on" : "Clearing off";
+  $("#stateSub").textContent = prefs.autoClear
+    ? "Sites cleared as you close their last tab"
+    : "Nothing is cleared unless you ask";
+
+  box.onchange = async () => {
+    if (box.checked && !state.allSites) {
+      // It cannot work without the browser-wide grant, and a switch that
+      // silently does nothing is the defect this extension exists to be the
+      // opposite of.
+      let ok = false;
+      try { ok = await chrome.permissions.request({ origins: [ALL_SITES] }); } catch {}
+      if (!ok) { box.checked = false; paintMaster(); return; }
+      state.allSites = true;
+    }
+    await saveGlobalPrefs({ autoClear: box.checked });
+    await paintMaster();
+    if (state.mode === "all") paintAll();
+  };
+}
+
 function paintScope() {
   const el = $("#scope");
   el.hidden = false;
@@ -373,6 +408,7 @@ async function paintScan() {
   paintGroups();
   paintScope();
   paintStats();
+  paintMaster();
 }
 
 /* ----------------------------------------------------------- every site */
@@ -472,17 +508,16 @@ async function paintAll() {
     const m = Math.round((Date.now() - t) / 60000);
     return m < 1 ? "just now" : m < 60 ? `${plural(m, "minute", "minutes")} ago` : `${plural(Math.round(m / 60), "hour", "hours")} ago`;
   };
-  const autoRow = `<label class="auto">
-    <input type="checkbox" id="autoClear" ${prefs.autoClear ? "checked" : ""} />
-    <span><b>Clear a site when I close its last tab</b>
-    <span>Runs on its own, in the background. Sites you have spared below are never touched${
-      state.allSites ? "" : " — needs access to every site, which you have not given yet"
+  const autoRow = `<div class="auto">
+    <span><b>${prefs.autoClear ? "Clearing as you close tabs" : "Automatic clearing is off"}</b>
+    <span>${prefs.autoClear ? "Sites you have spared below are never touched" : "Turn it on with the switch at the top"}${
+      state.allSites || !prefs.autoClear ? "" : " — needs access to every site, which you have not given yet"
     }.${
       lastAuto ? `<span class="last">Last: ${esc(lastAuto.site)} — ${plural(lastAuto.removed, "cookie", "cookies")} removed${
         lastAuto.kept ? `, ${plural(lastAuto.kept, "sign-in", "sign-ins")} kept` : ""
       }, ${ago(lastAuto.at)}</span>` : ""
     }</span></span>
-  </label>
+  </div>
   <label class="auto sub">
     <input type="checkbox" id="autoKeepLogins" ${prefs.autoKeepLogins ? "checked" : ""} ${prefs.autoClear ? "" : "disabled"} />
     <span><b>Keep sign-in cookies when it does</b>
@@ -567,18 +602,6 @@ async function paintAll() {
     });
     find.focus();
   }
-  $("#autoClear").addEventListener("change", async (e) => {
-    if (e.target.checked && !state.allSites) {
-      // It cannot work without the browser-wide grant, and a switch that silently
-      // does nothing is the exact defect this extension exists to be the opposite of.
-      let ok = false;
-      try { ok = await chrome.permissions.request({ origins: [ALL_SITES] }); } catch {}
-      if (!ok) { e.target.checked = false; return; }
-      state.allSites = true;
-    }
-    await saveGlobalPrefs({ autoClear: e.target.checked });
-    paintAll();
-  });
   $("#autoKeepLogins").addEventListener("change", async (e) => {
     await saveGlobalPrefs({ autoKeepLogins: e.target.checked });
     paintAll();
@@ -798,6 +821,7 @@ function renderIntro() {
   </div>`;
   $("#scope").hidden = true;
   paintStats();
+  paintMaster();
   $("#footer").hidden = false;
   $("#footer").innerHTML =
     `<button id="grant">Show what ${esc(state.site)} stored</button>` +
@@ -821,6 +845,7 @@ function renderUnsupported(message) {
   $("#main").innerHTML = `<div class="pad"><p class="lead">${esc(message)}</p></div>`;
   $("#scope").hidden = true;
   $("#stats").hidden = true;
+  $("#master").hidden = true;
   $("#footer").hidden = true;
 }
 

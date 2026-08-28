@@ -5,6 +5,16 @@
   <div class="host" id="host">—</div>
   <div class="sub" id="sub">reading this tab…</div>
 </header>
+<div class="master" id="master" hidden>
+  <span>
+    <span class="state" id="stateText">Clearing on</span>
+    <span class="statesub" id="stateSub">Sites cleared as you close them</span>
+  </span>
+  <span class="switch">
+    <input type="checkbox" id="enabled" aria-label="Clear sites automatically" />
+    <span class="track"></span><span class="thumb"></span>
+  </span>
+</div>
 <nav id="tabs" class="tabs" hidden>
   <button class="tab" data-mode="site">This site</button>
   <button class="tab" data-mode="all">Every site</button>

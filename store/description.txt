@@ -1,0 +1,15 @@
+Most cookie cleaners delete first and tell you nothing. This one shows you the list before anything is removed, and checks afterwards that the removal worked.
+
+See what is there. Every cookie the site has stored, grouped by the domain that set it, with sizes. The ones that keep you signed in are marked, and they are left alone unless you say otherwise. Local storage, databases, caches and service workers are listed too.
+
+Remove only what you pick. Untick a domain and it is genuinely spared — removal is cookie by cookie, not a blunt "clear everything for this site" that takes your other subdomains with it. Your choices are remembered per site.
+
+Then see what actually went. After deleting, it counts again and reports the result: how many were removed, how many could not be, and how many the page has already set again because it is still open. The numbers come from re-reading the browser, never from assuming the delete worked.
+
+Or let it clear a site as you close it. Switch on "clear a site when I close its last tab" and the job happens on its own, in the background, as you browse. It only fires when the last tab for that site closes — another tab still open on the same site stops it. Sites on your spared list are never touched, and sign-in cookies are kept unless you turn that off. Chrome's own session-only setting cannot do this: it waits until you close the entire browser, and says so in its own wording. Every sweep is written down and shown in the popup, so a run that cleared nothing can never be mistaken for one that worked.
+
+Clean the whole browser when you want to. A second tab sweeps every site at once. The default removes advertising and analytics cookies only, matched against a list of known tracking domains and counter names — it cannot sign you out, because no site you can log in to is on that list. There is also an everything option, which says plainly that it will sign you out before you use it.
+
+It has no access to any website when you install it. When you press the button, it asks for access to the one site you are on, and nothing else. Cookies set by other companies the page loaded stay hidden until you separately choose to include them. You can grant access to every site if you prefer, and take it back from the same line of text.
+
+No account, no server, no analytics. Nothing is ever sent anywhere. The only things stored are your per-site choices, the counters shown in the popup, and a short local record of what the automatic clear has done.
