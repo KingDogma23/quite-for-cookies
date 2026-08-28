@@ -46,8 +46,7 @@ const ALL_SITES = "*://*/*";
  * more". Harmful, then useless. The sweep now works from a curated list of
  * things that are definitely trackers, or clears everything and says so.
  */
-const AUTH_RE = /(^|[_.-])(sess|sid|auth|token|login|logged|jwt|remember|sso|oauth|identity|user|account)/i;
-const looksLikeSignIn = (c) => AUTH_RE.test(c.name) || (c.secure && c.httpOnly);
+const { looksLikeSignIn } = self;   // signin.js — one definition, two callers
 
 const esc = (s) => String(s).replace(/[<>&"]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" })[c]);
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
@@ -393,7 +392,10 @@ async function paintScan() {
  */
 async function readGlobalPrefs() {
   const { globalPrefs } = await chrome.storage.local.get("globalPrefs");
-  return { mode: "trackers", keepLogins: true, spared: [], ...(globalPrefs || {}) };
+  return {
+    mode: "trackers", keepLogins: true, autoClear: false, autoKeepLogins: true,
+    autoClearStorage: false, spared: [], ...(globalPrefs || {}),
+  };
 }
 
 /**
@@ -407,8 +409,19 @@ const isTracker = (c) =>
   self.TRACKERS.has(PSL.registrable(c.domain.replace(/^\./, "")) || "") ||
   self.TRACKING_COOKIE_RE.test(c.name);
 
-async function saveGlobalPrefs(prefs) {
-  await chrome.storage.local.set({ globalPrefs: prefs });
+/**
+ * Merge a change into whatever is stored NOW, rather than spreading a copy read
+ * when the panel was last painted.
+ *
+ * Every handler used to save `{...prefs, oneField}` from its closure. Paint,
+ * change something, and a second handler bound to the earlier paint writes the
+ * whole object back — silently reverting anything changed in between. That is
+ * the likeliest explanation for the auto-clear switch turning itself off
+ * between sessions on 2026-08-28, having demonstrably worked minutes earlier.
+ */
+async function saveGlobalPrefs(patch) {
+  const { globalPrefs } = await chrome.storage.local.get("globalPrefs");
+  await chrome.storage.local.set({ globalPrefs: { ...(globalPrefs || {}), ...patch } });
 }
 
 async function scanAll() {
@@ -454,7 +467,38 @@ async function paintAll() {
   $("#sub").textContent = `${plural(totalCookies, "cookie", "cookies")} across ${plural(state.allGroups.length, "site", "sites")}`;
   $("#scope").hidden = true;
 
-  const rows = !state.expanded ? "" : state.allGroups
+  const { lastAuto, autoLog } = await chrome.storage.local.get(["lastAuto", "autoLog"]);
+  const ago = (t) => {
+    const m = Math.round((Date.now() - t) / 60000);
+    return m < 1 ? "just now" : m < 60 ? `${plural(m, "minute", "minutes")} ago` : `${plural(Math.round(m / 60), "hour", "hours")} ago`;
+  };
+  const autoRow = `<label class="auto">
+    <input type="checkbox" id="autoClear" ${prefs.autoClear ? "checked" : ""} />
+    <span><b>Clear a site when I close its last tab</b>
+    <span>Runs on its own, in the background. Sites you have spared below are never touched${
+      state.allSites ? "" : " — needs access to every site, which you have not given yet"
+    }.${
+      lastAuto ? `<span class="last">Last: ${esc(lastAuto.site)} — ${plural(lastAuto.removed, "cookie", "cookies")} removed${
+        lastAuto.kept ? `, ${plural(lastAuto.kept, "sign-in", "sign-ins")} kept` : ""
+      }, ${ago(lastAuto.at)}</span>` : ""
+    }</span></span>
+  </label>
+  <label class="auto sub">
+    <input type="checkbox" id="autoKeepLogins" ${prefs.autoKeepLogins ? "checked" : ""} ${prefs.autoClear ? "" : "disabled"} />
+    <span><b>Keep sign-in cookies when it does</b>
+    <span>Leaves anything that looks like a login, so closing a tab tidies the
+    tracking without logging you out of the site.</span></span>
+  </label>
+  <label class="auto sub">
+    <input type="checkbox" id="autoClearStorage" ${prefs.autoClearStorage ? "checked" : ""} ${prefs.autoClear ? "" : "disabled"} />
+    <span><b>Also clear stored site data</b>
+    <span>Without this, trackers that keep a copy of your ID in local storage put
+    the same cookie straight back — measured, not theoretical. With it, sites that
+    keep your login in local storage rather than a cookie will sign you out.</span></span>
+  </label>`;
+
+  const rows = !state.expanded ? "" : [...state.allGroups]
+    .sort((a, b) => a.site.localeCompare(b.site))
     .map((g) => {
       const spared = prefs.spared.includes(g.site);
       const going = spared ? 0 : g.cookies.filter(doomed).length;
@@ -492,8 +536,12 @@ async function paintAll() {
        <span>Spares cookies that are Secure and HttpOnly, or named like a login. Best effort:
        it now covers the ones that caught us out, but a site with an unusual name can still slip through.</span></span>
      </label>
+     ${autoRow}
+     ${(autoLog || []).length ? `<div class="section">What it has been doing</div>
+       <div class="pad log">${autoLog.slice(0, 8).map((e) =>
+         `<div><span>${new Date(e.t).toLocaleTimeString()}</span> ${esc(e.line)}</div>`).join("")}</div>` : ""}
      <div class="section">Sites</div>
-     ${state.expanded ? rows : `<div class="pad"><p class="lead">${plural(state.allGroups.length, "site", "sites")} found. ${
+     ${state.expanded ? `<div class="find"><input id="find" type="search" placeholder="Find a site — type part of its name" /></div>${rows}<div class="nohits" id="nohits" hidden>No site matches that.</div>` : `<div class="pad"><p class="lead">${plural(state.allGroups.length, "site", "sites")} found. ${
        prefs.spared.length ? `${plural(prefs.spared.length, "site is", "sites are")} on your spared list.` : "Nothing is on your spared list."
      }</p><button id="expand" class="ghost">Review them one by one</button></div>`}`;
 
@@ -501,13 +549,51 @@ async function paintAll() {
   $("#footer").innerHTML = `<button id="goAll" ${targets.length ? "" : "disabled"}>Remove ${plural(targets.length, "cookie", "cookies")}</button>`;
 
   $("#expand")?.addEventListener("click", () => { state.expanded = true; paintAll(); });
+
+  // Filter by hiding rows rather than repainting: a repaint on every keystroke
+  // would take the caret out of the box you are typing in.
+  const find = $("#find");
+  if (find) {
+    find.addEventListener("input", () => {
+      const q = find.value.trim().toLowerCase();
+      let hits = 0;
+      $("#main").querySelectorAll("label.group").forEach((row) => {
+        const site = row.querySelector("input[data-site]")?.dataset.site || "";
+        const show = !q || site.toLowerCase().includes(q);
+        row.hidden = !show;
+        if (show) hits++;
+      });
+      $("#nohits").hidden = hits > 0;
+    });
+    find.focus();
+  }
+  $("#autoClear").addEventListener("change", async (e) => {
+    if (e.target.checked && !state.allSites) {
+      // It cannot work without the browser-wide grant, and a switch that silently
+      // does nothing is the exact defect this extension exists to be the opposite of.
+      let ok = false;
+      try { ok = await chrome.permissions.request({ origins: [ALL_SITES] }); } catch {}
+      if (!ok) { e.target.checked = false; return; }
+      state.allSites = true;
+    }
+    await saveGlobalPrefs({ autoClear: e.target.checked });
+    paintAll();
+  });
+  $("#autoKeepLogins").addEventListener("change", async (e) => {
+    await saveGlobalPrefs({ autoKeepLogins: e.target.checked });
+    paintAll();
+  });
+  $("#autoClearStorage").addEventListener("change", async (e) => {
+    await saveGlobalPrefs({ autoClearStorage: e.target.checked });
+    paintAll();
+  });
   $("#keepLogins").addEventListener("change", async (e) => {
-    await saveGlobalPrefs({ ...prefs, keepLogins: e.target.checked });
+    await saveGlobalPrefs({ keepLogins: e.target.checked });
     paintAll();
   });
   $("#main").querySelectorAll('input[name="sweep"]').forEach((r) =>
     r.addEventListener("change", async () => {
-      await saveGlobalPrefs({ ...prefs, mode: r.value });
+      await saveGlobalPrefs({ mode: r.value });
       paintAll();
     }),
   );
@@ -515,7 +601,7 @@ async function paintAll() {
     box.addEventListener("change", async () => {
       const site = box.dataset.site;
       const spared = box.checked ? prefs.spared.filter((x) => x !== site) : [...prefs.spared, site];
-      await saveGlobalPrefs({ ...prefs, spared });
+      await saveGlobalPrefs({ spared });
       paintAll();
     }),
   );
