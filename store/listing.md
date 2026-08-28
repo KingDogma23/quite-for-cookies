@@ -1,12 +1,18 @@
 # Chrome Web Store submission — Quite for Cookies
 
 Publisher: **Quite Apps**  ·  Contact: **support@quiteapps.co.uk**
+Source: **github.com/KingDogma23/quite-for-cookies**
 Package: `dist/cookie-cleaner-<version>-store.zip` (built with `./package.sh --store`)
+Current version: **0.20.0**
+
+> The zip is named from the working directory, which is still `cookie-cleaner`
+> while the repository is `quite-for-cookies`. Harmless, but do not let it read
+> as a different extension from the one being submitted.
 
 ## Summary (132 characters max)
 
-Shows exactly what a site has stored, deletes only what you choose, and then
-checks that it actually went.
+See what a site has stored, delete only what you pick, and check it went. Or let
+it clear each site as you close its last tab.
 
 ## Description
 
@@ -27,6 +33,15 @@ result: how many were removed, how many could not be, and how many the page has
 already set again because it is still open. The numbers come from re-reading the
 browser, never from assuming the delete worked.
 
+**Or let it clear a site as you close it.** Switch on "clear a site when I close
+its last tab" and the job happens on its own, in the background, as you browse.
+It only fires when the last tab for that site closes — another tab still open on
+the same site stops it. Sites on your spared list are never touched, and sign-in
+cookies are kept unless you turn that off. Chrome's own session-only setting
+cannot do this: it waits until you close the entire browser, and says so in its
+own wording. Every sweep is written down and shown in the popup, so a run that
+cleared nothing can never be mistaken for one that worked.
+
 **Clean the whole browser when you want to.** A second tab sweeps every site at
 once. The default removes advertising and analytics cookies only, matched
 against a list of known tracking domains and counter names — it cannot sign you
@@ -34,14 +49,15 @@ out, because no site you can log in to is on that list. There is also an
 everything option, which says plainly that it will sign you out before you use
 it.
 
-**It asks for nothing when you install it.** No permissions at all. When you
-press the button, it asks for access to the one site you are on, and nothing
-else. Cookies set by other companies the page loaded stay hidden until you
-separately choose to include them. You can grant access to every site if you
-prefer, and take it back from the same line of text.
+**It has no access to any website when you install it.** When you press the
+button, it asks for access to the one site you are on, and nothing else. Cookies
+set by other companies the page loaded stay hidden until you separately choose
+to include them. You can grant access to every site if you prefer, and take it
+back from the same line of text.
 
 No account, no server, no analytics. Nothing is ever sent anywhere. The only
-things stored are your per-site choices and the counters shown in the popup.
+things stored are your per-site choices, the counters shown in the popup, and a
+short local record of what the automatic clear has done.
 
 ## Category
 
@@ -51,7 +67,8 @@ Privacy & Security
 
 The single purpose of this extension is to show the user the cookies and site
 data that websites have stored in their browser, and to delete the ones the user
-chooses.
+chooses — either on request, or automatically for sites the user has asked it to
+clear when their last tab closes.
 
 ## Permission justifications
 
@@ -65,13 +82,22 @@ chooses.
   cookies the page itself can see, and to list the third-party domains the page
   loaded. This is what makes the preview accurate rather than approximate.
 - **storage** — remembers which domains you have chosen to spare on each site,
-  and the totals shown in the popup. Nothing leaves the browser.
-- **optional host permissions (`*://*/*`)** — NOT granted at install. The
-  extension requests one registrable domain at a time, at the moment you press
-  "Show what this site stored". Chrome's `activeTab` does not cover the cookies
-  API, so a host permission is genuinely required to read a site's cookies; this
-  is the narrowest form of it. A browser-wide grant is offered for people who
-  clean many sites, and is reversible from the popup.
+  the totals shown in the popup, and the record of what the automatic clear has
+  done. Nothing leaves the browser.
+- **background service worker (`background.js`)** — added in 0.20.0. It watches
+  tabs closing so it can clear a site once its last tab has gone. It keeps a
+  tab-to-site map in `storage.session`, because an in-memory map dies when MV3
+  suspends the worker and the feature would then fail silently. It performs no
+  network activity of any kind.
+- **optional host permissions (`*://*/*`)** — NOT granted at install. For manual
+  use the extension requests one registrable domain at a time, at the moment you
+  press "Show what this site stored". Chrome's `activeTab` does not cover the
+  cookies API, so a host permission is genuinely required to read a site's
+  cookies; this is the narrowest form of it. The automatic clear is the one
+  feature that needs the browser-wide grant, because it has to know which site a
+  closing tab belonged to; it is requested only when that switch is turned on,
+  the switch does nothing until it is granted, and the grant is reversible from
+  the same line of text in the popup.
 
 ## Data usage disclosures
 
@@ -84,17 +110,45 @@ Select: **does not collect or use user data.**
 - No data used for creditworthiness or lending
 - Not used for purposes unrelated to the single purpose above
 
+For completeness, since 0.20.0 keeps a record of its own automatic sweeps: that
+record is the last 40 entries, each a site name, a count and a timestamp, held
+in `chrome.storage.local` on the user's own machine. It exists so the user can
+see whether a background job that runs unattended actually did anything. It is
+never transmitted, and the extension makes no network requests at all.
+
 ## Assets
 
 - Screenshots, 1280x800, in `store/screenshots/`:
   - `01-see-it-before-you-delete-it.png`
-  - `02-clean-everything-stay-signed-in.png`
+  - `02-close-the-tab-and-it-is-cleared.png`
   - `03-then-check-that-it-went.png`
 - `store/store-icon-128.png` — 96x96 mark on a transparent 128x128 canvas
 - `store/promo-tile-440x280.png`
 - `store/marquee-1400x560.png`
 
-The per-site screenshot shows a real bbc.co.uk scan measured on 2026-08-27. The
-ALL TIME counters read zero because that is what a fresh install shows. The
-every-site screenshot depicts a typical profile rather than a measured one, since
-no two browsers hold the same cookies.
+All three are drawn from the same generator as the other Quite Apps listings
+(`tools/make-shots.py` in the website project), so the three extensions present
+as one publisher.
+
+On what the numbers in them are. The per-site screenshot shows a real bbc.co.uk
+scan measured on 2026-08-27 — 22 cookies across 3 domains, and the sizes and
+sign-in markings are that scan's. The ALL TIME counters read 357 / 45 / 228,
+which are real measured totals from a profile in use; earlier versions of these
+screenshots showed a fresh install's zeros instead. The "last sweep" line and the
+after-the-fact report depict a plausible run of that same bbc.co.uk scan rather
+than a separately measured one, since a background sweep cannot be screenshotted
+as it happens.
+
+## Testing notes for review (0.20.0)
+
+The automatic clear was verified on 38 sites using a planted probe cookie that
+the site cannot regenerate. It was gone on all 38. Two negative controls hold: a
+second tab open on the same site stops the sweep, and a site on the spared list
+comes back byte-identical.
+
+Cookies alone are not sufficient, and this was measured rather than assumed: on
+independent.co.uk the sweep removed the cookies and two tracker IDs returned
+byte-identical, restored from local storage. Clearing site data alongside is
+therefore offered as a separate option, defaulting to off, with both consequences
+stated where it is turned on — trackers restore themselves without it, and sites
+that keep a session in local storage will sign you out with it.
