@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "Quite for Cookies",
+  "version": "0.12.0",
+  "description": "See exactly what a site has stored before you delete it, and check afterwards that it actually went.",
+  "permissions": [
+    "activeTab",
+    "cookies",
+    "browsingData",
+    "scripting",
+    "storage"
+  ],
+  "optional_host_permissions": [
+    "*://*/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Quite for Cookies",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
