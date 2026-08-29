@@ -1,6 +1,7 @@
 # Chrome Web Store submission — Quite for Cookies
 
 Publisher: **Quite Apps**  ·  Contact: **support@quiteapps.co.uk**
+Store:  **https://chromewebstore.google.com/detail/quite-for-cookies/iagkmeadnfkmgocminiglpibkcnibnch**
 Source: **github.com/KingDogma23/quite-for-cookies**
 Package: `dist/cookie-cleaner-<version>-store.zip` (built with `./package.sh --store`)
 Current version: **0.20.0**
