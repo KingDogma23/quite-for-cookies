@@ -16,6 +16,11 @@ it clear each site as you close its last tab.
 
 ## Description
 
+Quite for Cookies is a cookie cleaner that shows its working. Delete cookies and
+site data for the site you are on, or switch on automatic clearing and each site
+is cleared as you close its last tab — with a whitelist for anything you want
+left alone.
+
 Most cookie cleaners delete first and tell you nothing. This one shows you the
 list before anything is removed, and checks afterwards that the removal worked.
 
