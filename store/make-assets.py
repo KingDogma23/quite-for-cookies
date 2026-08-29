@@ -232,7 +232,7 @@ def mark(size):
     d = ImageDraw.Draw(img)
     s = size * K * 4 / 48
     d.rounded_rectangle([0, 0, size * K * 4 - 1, size * K * 4 - 1], radius=10.56 * s, fill=CARD)
-    d.ellipse([(24 - 11.52) * s, (24 - 11.52) * s, (24 + 11.52) * s, (24 + 11.52) * s],
+    d.ellipse([(24 - 8.68) * s, (24 - 8.68) * s, (24 + 8.68) * s, (24 + 8.68) * s],
               outline=BLUE, width=round(5.52 * s))
     d.line([26.04 * s, 26.04 * s, 33.61 * s, 33.61 * s], fill=BLUE, width=round(5.52 * s))
     return img.resize((size * K, size * K), Image.LANCZOS)
