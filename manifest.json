@@ -1,8 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "Quite for Cookies",
-  "version": "0.21.0",
-  "description": "See exactly what a site has stored before you delete it, and check afterwards that it actually went.",
+  "name": "Quite for Cookies — delete cookies and site data, or clear on tab close",
+  "short_name": "Quite for Cookies",
+  "version": "0.22.0",
+  "description": "Cookie cleaner that shows you what it will delete, then checks it went. Auto-delete cookies on tab close, with a whitelist.",
   "permissions": [
     "activeTab",
     "cookies",
