@@ -24,3 +24,10 @@ them.
 
 1. `chrome://extensions` → Developer mode
 2. Load unpacked → this folder
+
+## Elsewhere
+
+- [quiteapps.co.uk](https://quiteapps.co.uk/) — the other extensions in the family
+- [facebook.com/quiteapps](https://www.facebook.com/quiteapps/) — where breakages get
+  announced. When the site this extension runs on changes its markup, the fix takes
+  hours and clearing store review takes days; that is where the gap gets explained.
