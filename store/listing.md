@@ -4,7 +4,7 @@ Publisher: **Quite Apps**  ·  Contact: **support@quiteapps.co.uk**
 Store:  **https://chromewebstore.google.com/detail/quite-for-cookies/iagkmeadnfkmgocminiglpibkcnibnch**
 Source: **github.com/KingDogma23/quite-for-cookies**
 Package: `dist/cookie-cleaner-<version>-store.zip` (built with `./package.sh --store`)
-Current version: **0.22.5**
+Current version: **0.22.6**
 
 > The zip is named from the working directory, which is still `cookie-cleaner`
 > while the repository is `quite-for-cookies`. Harmless, but do not let it read
@@ -170,7 +170,7 @@ it also shows the corrected tracker-mode wording and the sign-in checkbox
 enabled in that mode. Regenerate from store/screenshot-02-source.html at exactly
 1280x800, device scale 1.
 
-## Testing notes for review (0.22.5)
+## Testing notes for review (0.22.6)
 
 The automatic clear was verified on 38 sites using a planted probe cookie that
 the site cannot regenerate. It was gone on all 38. Two negative controls hold: a
