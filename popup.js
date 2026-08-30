@@ -233,7 +233,15 @@ async function removeSelected() {
     try { await chrome.cookies.remove(details); } catch { /* survivors are counted below */ }
   }
 
-  if (!state.skipStorage && state.storage) {
+  // The same condition the button label is built from (see clearingStorage in
+  // the paint function). This used to be `!state.skipStorage && state.storage`,
+  // i.e. merely "the measuring script ran" — so when every measure read zero the
+  // preview said "No site data stored.", the button said "Remove 3 cookies" with
+  // no mention of site data, and clicking it wiped localStorage, IndexedDB,
+  // caches, service workers and sessionStorage for the origin anyway. skipStorage
+  // defaults to false, so that was the default path.
+  const measuredStorage = storageBits(state.storage).length > 0;
+  if (!state.skipStorage && state.storage && measuredStorage) {
     // No webSQL: Chrome removed it, and asking throws "Requested data type(s)
     // are not supported" for the WHOLE call — which the fallback below caught,
     // but not before logging an error on every single run. A red Errors button
@@ -271,14 +279,7 @@ function paintGroups() {
     .join("");
 
   const s = state.storage;
-  const bits = [];
-  if (s) {
-    if (s.local?.keys) bits.push(`${plural(s.local.keys, "item", "items")} local storage (${kb(s.local.size)})`);
-    if (s.session?.keys) bits.push(`${plural(s.session.keys, "item", "items")} session storage`);
-    if (s.dbs.length) bits.push(plural(s.dbs.length, "database", "databases"));
-    if (s.caches.length) bits.push(plural(s.caches.length, "cache", "caches"));
-    if (s.workers) bits.push(plural(s.workers, "service worker", "service workers"));
-  }
+  const bits = storageBits(s);
   const hasStorage = bits.length > 0;
   const storageRow = !s
     ? `<div class="group"><span class="gmain"><span class="gmeta">Site data couldn't be read on this page.</span></span></div>`
@@ -478,6 +479,27 @@ async function scanAll() {
     .sort((a, b) => b.cookies.length - a.cookies.length);
 }
 
+/**
+ * What the site-data preview will list, as human-readable strings.
+ *
+ * Extracted so the PREVIEW and the DELETE ask the same question. They used to
+ * ask different ones: the preview (and the button label) came from this list
+ * being non-empty, while the delete only checked that the measuring script had
+ * run at all. When every measure read zero the user was told "No site data
+ * stored." and then had the origin's localStorage, IndexedDB, caches, service
+ * workers and sessionStorage wiped by a button that never mentioned them.
+ */
+function storageBits(s) {
+  const bits = [];
+  if (!s) return bits;
+  if (s.local?.keys) bits.push(`${plural(s.local.keys, "item", "items")} local storage (${kb(s.local.size)})`);
+  if (s.session?.keys) bits.push(`${plural(s.session.keys, "item", "items")} session storage`);
+  if (s.dbs?.length) bits.push(plural(s.dbs.length, "database", "databases"));
+  if (s.caches?.length) bits.push(plural(s.caches.length, "cache", "caches"));
+  if (s.workers) bits.push(plural(s.workers, "service worker", "service workers"));
+  return bits;
+}
+
 function targetsFor(prefs) {
   return state.allGroups
     .filter((g) => !prefs.spared.includes(g.site))
@@ -640,7 +662,20 @@ async function paintAll() {
   $("#main").querySelectorAll("input[data-site]").forEach((box) =>
     box.addEventListener("change", async () => {
       const site = box.dataset.site;
-      const spared = box.checked ? prefs.spared.filter((x) => x !== site) : [...prefs.spared, site];
+      // Read-modify-write against what is stored NOW. `prefs` here is the copy
+      // captured when paintAll() last ran, and paintAll() is async and can be
+      // rebuilding hundreds of rows: untick site A, then untick site B on the
+      // still-mounted old DOM, and B's handler writes an array computed from a
+      // `spared` that never contained A. A vanishes from the whitelist with no
+      // visible signal, and prefs.spared is the ONLY thing standing between a
+      // site and the background sweep (background.js). saveGlobalPrefs already
+      // merges patches into current storage for scalars; this defeated it by
+      // computing the patch VALUE from the stale copy.
+      const { globalPrefs } = await chrome.storage.local.get("globalPrefs");
+      const cur = globalPrefs?.spared || [];
+      const spared = box.checked
+        ? cur.filter((x) => x !== site)
+        : [...new Set([...cur, site])];
       await saveGlobalPrefs({ spared });
       paintAll();
     }),

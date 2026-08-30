@@ -70,14 +70,29 @@ const siteOf = (url) => {
 async function seedFromOpenTabs(reason) {
   const map = {};
   const origins = {};
+  let skipped = 0;
   for (const t of await chrome.tabs.query({})) {
+    // Incognito tabs are never tracked. Nothing in the sweep is cookie-store
+    // aware: chrome.cookies.getAll({domain}) uses the CALLING context's store
+    // and chrome.browsingData.remove() acts on the regular profile. So if the
+    // user grants this extension incognito access (default "spanning" — one
+    // worker serving both), closing the last incognito tab for a site fired the
+    // sweep against the REGULAR profile and deleted regular-profile cookies,
+    // and with "Also clear stored site data" on, its localStorage, IndexedDB,
+    // caches and service workers too. The "still open elsewhere" guard does not
+    // help: it only counts normal tabs.
+    //
+    // Skipping is the correct fix rather than the cheap one — the browser
+    // discards incognito data when the session ends, so there is nothing here
+    // for this feature to add.
+    if (t.incognito) { skipped++; continue; }
     const site = t.url && siteOf(t.url);
     if (!site) continue;
     map[t.id] = site;
     remember(origins, site, t.url);
   }
   await chrome.storage.session.set({ tabsites: map, origins });
-  note(`${reason} — tracking ${Object.keys(map).length} open tab(s)`);
+  note(`${reason} — tracking ${Object.keys(map).length} open tab(s)` + (skipped ? `, ${skipped} incognito tab(s) left alone` : ""));
 }
 
 seedFromOpenTabs("worker started");
@@ -110,6 +125,9 @@ async function tabMap() {
 }
 
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+  // See seedFromOpenTabs: an incognito tab must never enter the map, or closing
+  // it sweeps the regular profile.
+  if (tab.incognito) return;
   const url = changeInfo.url || tab.url;
   if (!url || !/^https?:/.test(url)) return;
   const site = siteOf(url);
@@ -143,7 +161,10 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
 
   // Still open elsewhere? Then this was not the last tab.
   const open = await chrome.tabs.query({});
-  const stillOpen = open.filter((t) => t.url && siteOf(t.url) === site).length;
+  // Incognito tabs are not tracked, so they must not count as "still open"
+  // either — otherwise an incognito tab on the same site would silently
+  // suppress a sweep the user asked for in their normal profile.
+  const stillOpen = open.filter((t) => !t.incognito && t.url && siteOf(t.url) === site).length;
   if (stillOpen) return note(`${site}: still open in ${stillOpen} other tab(s)`);
 
   // Without the browser-wide grant this returns an empty array rather than an
