@@ -4,7 +4,7 @@ Publisher: **Quite Apps**  ·  Contact: **support@quiteapps.co.uk**
 Store:  **https://chromewebstore.google.com/detail/quite-for-cookies/iagkmeadnfkmgocminiglpibkcnibnch**
 Source: **github.com/KingDogma23/quite-for-cookies**
 Package: `dist/cookie-cleaner-<version>-store.zip` (built with `./package.sh --store`)
-Current version: **0.20.0**
+Current version: **0.22.4**
 
 > The zip is named from the working directory, which is still `cookie-cleaner`
 > while the repository is `quite-for-cookies`. Harmless, but do not let it read
@@ -83,7 +83,10 @@ clear when their last tab closes.
   page until you press a button.
 - **cookies** — lists and deletes cookies. This is the extension's function.
 - **browsingData** — clears local storage, IndexedDB, cache storage and service
-  workers, restricted to the origin of the site you are looking at.
+  workers. From the popup this is restricted to the origin of the page you are
+  looking at. The automatic clear-on-tab-close covers every origin of that site
+  the worker has recorded while you browsed it, which can be more than one
+  address, and it runs unattended with no preview.
 - **scripting** — injects three short snippets into the page you are looking
   at. One measures the site data the page holds — local storage, session
   storage, databases, caches and service workers — so the preview shows what
@@ -154,7 +157,7 @@ after-the-fact report depict a plausible run of that same bbc.co.uk scan rather
 than a separately measured one, since a background sweep cannot be screenshotted
 as it happens.
 
-## Testing notes for review (0.20.0)
+## Testing notes for review (0.22.4)
 
 The automatic clear was verified on 38 sites using a planted probe cookie that
 the site cannot regenerate. It was gone on all 38. Two negative controls hold: a

@@ -31,7 +31,15 @@ importScripts("psl-data.js", "psl.js", "signin.js");
  */
 let noteChain = Promise.resolve();
 
-function note(line) {
+/**
+ * @param {string} line
+ * @param {"outcome"|"trace"} kind  An OUTCOME is something that happened to the
+ *   user's data, or a reason it did not. A TRACE is bookkeeping. The popup shows
+ *   the newest few, and it used to show them mixed: every tab close wrote a line
+ *   whether or not anything followed, so a handful of ordinary closes pushed the
+ *   one line that mattered out of view.
+ */
+function note(line, kind = "outcome") {
   // Serialised: concurrent tab events each did get-modify-set, and the later
   // write overwrote the earlier one. An instrument that drops its own readings
   // under load is worse than none, because it looks like it is working.
@@ -39,7 +47,7 @@ function note(line) {
     .then(async () => {
       const { autoLog } = await chrome.storage.local.get("autoLog");
       const log = autoLog || [];
-      log.unshift({ t: Date.now(), line });
+      log.unshift({ t: Date.now(), line, kind });
       await chrome.storage.local.set({ autoLog: log.slice(0, 40) });
     })
     .catch(() => {});
@@ -148,11 +156,10 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
     delete map[tabId];
     await chrome.storage.session.set({ tabsites: map });
   }
-  if (!site) {
-    note(`tab ${tabId} closed — not in the map, nothing to do`);
-    return;
-  }
-  note(`tab ${tabId} closed — was on ${site}`);
+  // No line for a tab that was never tracked: it is not an outcome, and one per
+  // close is what buried the outcomes.
+  if (!site) return;
+  note(`tab ${tabId} closed — was on ${site}`, "trace");
 
   const { globalPrefs } = await chrome.storage.local.get("globalPrefs");
   const prefs = { autoClear: false, autoKeepLogins: true, autoClearStorage: false, spared: [], ...(globalPrefs || {}) };

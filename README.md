@@ -15,7 +15,9 @@ Most cleaners delete first and tell you nothing. Two things this does instead:
 
 ## Permissions
 
-It asks for nothing at install. When you press *Show what this site stored*, it
+It requests no access to any website at install — the five API permissions it
+declares (activeTab, cookies, browsingData, scripting, storage) carry no site
+access on their own. When you press *Show what this site stored*, it
 requests access to that one domain, and nothing else. Cookies set by other
 companies the page loaded stay hidden until you separately choose to include
 them.

@@ -38,13 +38,19 @@ const ALL_SITES = "*://*/*";
  * only for the badge and the warning in per-site mode, where a false positive
  * would train people to ignore both.
  *
- * It is NOT allowed anywhere near the browser-wide sweep. Guessing at logins by
- * shape failed twice in one evening: a name pattern missed Facebook's `c_user`
- * and signed a real user out of everything, and the cautious replacement —
- * spare anything Secure, HttpOnly or without an expiry — spared so much that it
- * targeted three cookies out of a thousand, while its own label read "clears far
- * more". Harmful, then useless. The sweep now works from a curated list of
- * things that are definitely trackers, or clears everything and says so.
+ * In the browser-wide sweep it is used in ONE direction only: to SPARE. It never
+ * selects a cookie for deletion there, so a false positive costs a tracker that
+ * survives, never a login that does not. That direction matters, and the two
+ * failures behind this comment were both the other one: a name pattern missed
+ * Facebook's `c_user` and signed a real user out of everything, and the cautious
+ * replacement — spare anything Secure, HttpOnly or without an expiry — spared so
+ * much that it targeted three cookies out of a thousand while its label read
+ * "clears far more". Harmful, then useless.
+ *
+ * This comment used to say looksLikeSignIn was "NOT allowed anywhere near the
+ * browser-wide sweep", and until 0.22.1 that was true — which is exactly why
+ * tracker mode deleted sign-in cookies on twenty domains in its own list. The
+ * curated list was doing a job it could not do. See targetsFor().
  */
 const { looksLikeSignIn } = self;   // signin.js — one definition, two callers
 
@@ -188,13 +194,23 @@ const readStorage = () =>
         return null; // Storage can be blocked outright; not the same as empty.
       }
     };
-    const safe = async (fn) => { try { return await fn(); } catch { return []; } };
+    // null, not [] — the same distinction measure() already makes. Returning an
+    // empty array on failure made "could not be read" indistinguishable from
+    // "nothing there", which is how a blocked read became "Site data cleared,
+    // and confirmed empty" and got banked into the all-time counter.
+    const safe = async (fn) => { try { return await fn(); } catch { return null; } };
+    // Each of these stays null if it could not be read. Mapping or taking
+    // .length off a failed read would turn "blocked" back into "empty", which
+    // is the whole point of safe() returning null.
+    const dbsRaw = await safe(() => indexedDB.databases());
+    const cachesRaw = await safe(() => caches.keys());
+    const workersRaw = await safe(() => navigator.serviceWorker.getRegistrations());
     return {
       local: measure(localStorage),
       session: measure(sessionStorage),
-      dbs: (await safe(() => indexedDB.databases())).map((d) => d.name).filter(Boolean),
-      caches: await safe(() => caches.keys()),
-      workers: (await safe(() => navigator.serviceWorker.getRegistrations())).length,
+      dbs: dbsRaw === null ? null : dbsRaw.map((d) => d.name).filter(Boolean),
+      caches: cachesRaw,
+      workers: workersRaw === null ? null : workersRaw.length,
     };
   });
 
@@ -227,7 +243,13 @@ async function scan() {
       cookies,
       bytes: cookies.reduce((n, c) => n + c.name.length + c.value.length, 0),
       signIn: cookies.filter(looksLikeSignIn).length,
-      firstParty: domain.replace(/^\./, "").endsWith(state.site),
+      // Label boundary required: a bare endsWith made notbbc.co.uk look like a
+      // first party of bbc.co.uk, and the badge is what tells the user whether
+      // a cookie is theirs or someone else's.
+      firstParty: (() => {
+        const d = domain.replace(/^\./, "");
+        return d === state.site || d.endsWith("." + state.site);
+      })(),
     }))
     .sort((a, b) => Number(b.firstParty) - Number(a.firstParty) || b.cookies.length - a.cookies.length);
 }
@@ -487,9 +509,14 @@ async function autoLogBlock(limit = 5) {
   try {
     const { autoLog } = await chrome.storage.local.get("autoLog");
     if (!(autoLog || []).length) return "";
+    // Outcomes first. Entries written before 0.22.3 have no kind and are treated
+    // as outcomes, which is the safe direction — a trace shown is a smaller
+    // problem than an outcome hidden.
+    const outcomes = autoLog.filter((e) => e.kind !== "trace");
+    const shown = outcomes.length ? outcomes : autoLog;
     return (
       `<div class="section">What it has been doing</div>` +
-      `<div class="pad log">${autoLog
+      `<div class="pad log">${shown
         .slice(0, limit)
         .map((e) => `<div><span>${new Date(e.t).toLocaleTimeString()}</span> ${esc(e.line)}</div>`)
         .join("")}</div>`
@@ -697,7 +724,9 @@ async function paintAll() {
     <span><b>Also clear stored site data</b>
     <span>Without this, trackers that keep a copy of your ID in local storage put
     the same cookie straight back — measured, not theoretical. With it, sites that
-    keep your login in local storage rather than a cookie will sign you out.</span></span>
+    keep your login in local storage rather than a cookie will sign you out.
+    On the automatic clear this covers every address of the site the worker has
+    seen, not just the one page you had open.</span></span>
   </label>`;
 
   const rows = !state.expanded ? "" : [...state.allGroups]
@@ -932,9 +961,25 @@ async function runRemoval() {
     state.groups.filter((g) => !state.deselected.has(g.domain)).flatMap((g) => g.cookies).map((c) => [key(c), c.value]),
   );
   const b = state.storage;
-  const tally = (x) => (x ? (x.local?.keys || 0) + (x.session?.keys || 0) + x.dbs.length + x.caches.length + x.workers : 0);
+  // null if ANY component could not be read. Summing an unreadable store as
+  // zero produced "confirmed empty" from a failed read — the exact trap this
+  // extension avoids on the cookie side and fell into on the storage side.
+  const tally = (x) => {
+    if (!x) return null;
+    const parts = [x.local, x.session, x.dbs, x.caches];
+    if (parts.some((v) => v === null || v === undefined) || x.workers === null) return null;
+    return (x.local?.keys || 0) + (x.session?.keys || 0) + x.dbs.length + x.caches.length + x.workers;
+  };
   const storageBefore = tally(b);
   const hadStorage = storageBefore > 0;
+
+  // The spared set, snapshotted before the delete. "Left alone, as you asked"
+  // used to be printed from the pre-delete group counts, so it said the same
+  // thing whether or not those cookies actually survived — the one claim in
+  // this panel that could not fail.
+  const sparedBefore = new Map(
+    state.groups.filter((g) => state.deselected.has(g.domain)).flatMap((g) => g.cookies).map((c) => [key(c), c.value]),
+  );
 
   await removeSelected();
 
@@ -960,24 +1005,43 @@ async function runRemoval() {
   const stuck = [...selected].filter(([k, v]) => present.has(k) && present.get(k) === v).length;
   const back = [...selected].filter(([k, v]) => present.has(k) && present.get(k) !== v).length;
 
-  const untouched = state.groups
-    .filter((g) => state.deselected.has(g.domain))
-    .reduce((n, g) => n + g.cookies.length, 0);
+  const untouched = sparedBefore.size;
+  const sparedGone = [...sparedBefore.keys()].filter((k) => !present.has(k)).length;
+
+  // A re-read that returns nothing at all, when something was there a moment
+  // ago and we did not ask for all of it, is far more likely to be a failed
+  // read than a perfect sweep. Claiming total success from it is the same
+  // mistake as reading an empty cookies.getAll() as "no cookies".
+  const suspectRead = present.size === 0 && sparedBefore.size > 0;
   const s2 = state.storage;
   const storageLeft = s2 ? tally(s2) : null;
-  const itemsCleared = storageLeft === null ? 0 : Math.max(0, storageBefore - storageLeft);
+  // Gated on skipStorage. The delete branch already honours it, but this delta
+  // did not, so unticking "Also clear stored site data" still credited the
+  // all-time "Data items cleared" figure with whatever the page happened to
+  // drop by itself between the two readings.
+  const itemsCleared =
+    state.skipStorage || storageLeft === null || storageBefore === null
+      ? 0
+      : Math.max(0, storageBefore - storageLeft);
   paintStats(await addStats(gone, itemsCleared, gone || itemsCleared ? [state.site] : []));
 
   $("#main").innerHTML = `<div class="pad">
     <p class="result"><b>${plural(gone, "cookie", "cookies")} removed</b> of ${selected.size} selected.</p>
-    ${stuck ? `<p class="result kept">${plural(stuck, "cookie", "cookies")} could not be removed at all.</p>` : ""}
+    ${stuck ? `<p class="result kept">${plural(stuck, "cookie", "cookies")} ${stuck === 1 ? "is" : "are"} present again with the same value — either the removal did not take, or the page put it back from its own copy. This repo has measured the second: on one news site the Chartbeat and Permutive ids returned byte-identical from local storage.</p>` : ""}
     ${back ? `<p class="result kept">${plural(back, "cookie", "cookies")} ${back === 1 ? "has" : "have"} already been set again by the page, which is still open behind this. Reload it to start clean.</p>` : ""}
-    ${!hadStorage ? ""
+    ${storageBefore === null
+      ? '<p class="result">Site data could not be read on this page, so nothing is claimed about it.</p>'
+      : !hadStorage ? ""
       : state.skipStorage ? '<p class="result">Site data left untouched, as asked.</p>'
       : storageLeft === null ? '<p class="result">Site data could not be re-checked on this page.</p>'
       : storageLeft === 0 ? '<p class="result">Site data cleared, and confirmed empty.</p>'
       : `<p class="result kept">${plural(storageLeft, "item", "items")} of site data present again — the open page rebuilds it as it runs.</p>`}
-    ${untouched ? `<p class="result">${plural(untouched, "cookie", "cookies")} left alone, as you asked.</p>` : ""}
+    ${untouched
+      ? sparedGone
+        ? `<p class="result kept">${plural(sparedGone, "cookie", "cookies")} you asked to keep ${sparedGone === 1 ? "is" : "are"} no longer here — that should not happen. The other ${untouched - sparedGone} survived.</p>`
+        : `<p class="result">${plural(untouched, "cookie", "cookies")} left alone, and confirmed still here.</p>`
+      : ""}
+    ${suspectRead ? '<p class="result kept">Nothing at all came back from the re-read, so this result could not be confirmed.</p>' : ""}
     ${state.collisionNote ? `<p class="result kept">${state.collisionNote}</p>` : ""}
     <p class="result">Counted after deleting, not assumed from it.</p>
   </div>`;
