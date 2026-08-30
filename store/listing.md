@@ -50,8 +50,8 @@ cleared nothing can never be mistaken for one that worked.
 
 **Clean the whole browser when you want to.** A second tab sweeps every site at
 once. The default removes advertising and analytics cookies only, matched
-against a list of known tracking domains and counter names — it cannot sign you
-out, because no site you can log in to is on that list. There is also an
+against a list of known tracking domains and counter names, and spares
+anything that looks like a sign-in. There is also an
 everything option, which says plainly that it will sign you out before you use
 it.
 

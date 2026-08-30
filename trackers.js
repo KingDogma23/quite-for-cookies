@@ -4,13 +4,26 @@
  * Written by hand rather than imported, for two reasons. The maintained lists
  * (Disconnect, DuckDuckGo's Tracker Radar) carry non-commercial or share-alike
  * terms that are awkward to bundle in a store listing, and — more importantly —
- * this list has one job the general-purpose ones do not: NOTHING on it may ever
- * hold a login. So no consumer domain appears here, however much tracking it
- * does. google.com, facebook.com, amazon.co.uk and their kin are absent by
- * design; their dedicated advertising domains are not.
+ * this list tries to keep consumer domains off it. google.com, facebook.com,
+ * amazon.co.uk and their kin are absent by design; their dedicated advertising
+ * domains are not.
  *
- * That is the whole safety argument for tracker mode. It cannot sign you out,
- * because nothing it will touch is capable of signing you in.
+ * It used to say NOTHING here may ever hold a login, and tracker mode relied on
+ * that instead of checking. It is not true. Many entries are analytics and
+ * martech PRODUCTS whose own customers sign in on the same registrable domain —
+ * hubspot.com, mixpanel.com, amplitude.com, segment.com, optimizely.com,
+ * newrelic.com, klaviyo.com, braze.com, iterable.com, heap.io, hotjar.com,
+ * fullstory.com, logrocket.com, taboola.com, outbrain.com, criteo.com, vwo.com,
+ * statcounter.com, onesignal.com, shareasale.com and others. isTracker() matches
+ * the DOMAIN, so every cookie on them was doomed regardless of name. Measured
+ * 2026-08-30: all twenty returned isTracker=true AND looksLikeSignIn=true, and
+ * were deleted; bbc.co.uk, facebook.com, github.com and google.com were spared,
+ * so the check could report safe and did not.
+ *
+ * targetsFor() in popup.js now applies the sign-in guard in BOTH modes, so the
+ * safety of tracker mode no longer depends on this list being perfect. Curating
+ * the product domains out of it remains worth doing — their tracking cookies are
+ * already caught by TRACKING_COOKIE_RE below — but it is no longer load-bearing
  *
  * Coverage is "the common case", not "everything". A tracker not on this list
  * simply survives, which is the correct way for it to fail.

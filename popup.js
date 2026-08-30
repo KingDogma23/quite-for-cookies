@@ -482,18 +482,35 @@ function targetsFor(prefs) {
   return state.allGroups
     .filter((g) => !prefs.spared.includes(g.site))
     .flatMap((g) => g.cookies)
-    .filter((c) =>
-      prefs.mode === "everything" ? !(prefs.keepLogins && looksLikeSignIn(c)) : isTracker(c),
-    );
+    // The sign-in guard applies in BOTH modes. It used to run only in
+    // "everything" mode, so tracker mode — the default — had no sign-in
+    // protection at all, and the keepLogins checkbox was rendered disabled so
+    // it could not be turned on.
+    //
+    // The safety argument was that nothing in TRACKERS can hold a login. That
+    // is false, and measurably so: run the shipped isTracker() and
+    // looksLikeSignIn() over a session cookie on hubspot.com, mixpanel.com,
+    // amplitude.com, segment.com, optimizely.com, newrelic.com, klaviyo.com,
+    // braze.com, iterable.com, heap.io, hotjar.com, fullstory.com,
+    // logrocket.com, taboola.com, outbrain.com, criteo.com, vwo.com,
+    // statcounter.com, onesignal.com or shareasale.com and all twenty come
+    // back isTracker=true AND looksLikeSignIn=true. Every one was deleted. They
+    // are analytics and martech products whose own customers log in on the same
+    // registrable domain, and isTracker() matches the domain, not the name.
+    // Measured 2026-08-30 against bbc.co.uk/facebook.com/github.com/google.com
+    // as controls, which were correctly spared.
+    //
+    // An invariant asserted in a comment is not an invariant. This is the code.
+    .filter((c) => (prefs.mode === "everything" || isTracker(c)) && !(prefs.keepLogins && looksLikeSignIn(c)));
 }
 
 async function paintAll() {
   const prefs = await readGlobalPrefs();
   const totalCookies = state.allGroups.reduce((n, g) => n + g.cookies.length, 0);
-  const doomed =
-    prefs.mode === "everything"
-      ? (c) => !(prefs.keepLogins && looksLikeSignIn(c))
-      : isTracker;
+  // Must be the same predicate as targetsFor(), or the preview promises one
+  // thing and the sweep does another — which is the whole product.
+  const doomed = (c) =>
+    (prefs.mode === "everything" || isTracker(c)) && !(prefs.keepLogins && looksLikeSignIn(c));
   const trackerCount = state.allGroups.reduce((n, g) => n + g.cookies.filter(isTracker).length, 0);
   const unspared = state.allGroups.filter((g) => !prefs.spared.includes(g.site)).flatMap((g) => g.cookies);
   const loginish = unspared.filter(looksLikeSignIn).length;
@@ -555,7 +572,7 @@ async function paintAll() {
        <input type="radio" name="sweep" value="trackers" ${prefs.mode === "trackers" ? "checked" : ""} />
        <span><b>Trackers only — ${plural(trackerCount, "cookie", "cookies")}</b>
        <span>${trackerCount
-         ? `Advertising and analytics cookies, matched against a list of ${self.TRACKERS.size} tracking domains and known counter names. It cannot log you out: no site you can sign in to is on that list.`
+         ? `Advertising and analytics cookies, matched against a list of ${self.TRACKERS.size} tracking domains and known counter names. Anything that looks like a sign-in is spared, as long as the box below stays ticked.`
          : `None found. If you run an ad blocker, that is why — these cookies were never set in the first place. Nothing here needs cleaning.`}</span></span>
      </label>
      <label class="choice risky">
@@ -566,7 +583,7 @@ async function paintAll() {
        }</span></span>
      </label>
      <label class="choice sub">
-       <input type="checkbox" id="keepLogins" ${prefs.keepLogins ? "checked" : ""} ${prefs.mode === "everything" ? "" : "disabled"} />
+       <input type="checkbox" id="keepLogins" ${prefs.keepLogins ? "checked" : ""} />
        <span><b>Keep the ones that look like sign-ins — ${plural(loginish, "cookie", "cookies")}</b>
        <span>Spares cookies that are Secure and HttpOnly, or named like a login. Best effort:
        it now covers the ones that caught us out, but a site with an unusual name can still slip through.</span></span>
