@@ -119,7 +119,20 @@ async function loadSelection() {
   const { prefs } = await chrome.storage.local.get("prefs");
   const saved = (prefs || {})[state.site];
   if (saved) {
-    state.deselected = new Set(saved.off || []);
+    // The cautious default — sign-in groups start unticked — used to apply only
+    // when nothing had been saved for the site. After the first toggle, every
+    // later visit restored exactly the saved list, so any sign-in cookie domain
+    // that appeared LATER was absent from `off`, rendered ticked, and was
+    // deleted. Signing in to a new subdomain was enough.
+    //
+    // So the default now applies to groups the saved choice has never seen.
+    // `seen` records what was on screen when the choice was made; anything
+    // outside it is new, and a new sign-in group starts protected.
+    const seen = new Set(saved.seen || []);
+    const unseenSignIns = state.groups
+      .filter((g) => g.signIn && !seen.has(g.domain))
+      .map((g) => g.domain);
+    state.deselected = new Set([...(saved.off || []), ...unseenSignIns]);
     state.skipStorage = !!saved.skipStorage;
     return;
   }
@@ -130,7 +143,17 @@ async function loadSelection() {
 async function saveSelection() {
   const { prefs } = await chrome.storage.local.get("prefs");
   await chrome.storage.local.set({
-    prefs: { ...(prefs || {}), [state.site]: { off: [...state.deselected], skipStorage: state.skipStorage } },
+    prefs: {
+      ...(prefs || {}),
+      // `seen` is what was on screen when this choice was made — see
+      // loadSelection(). Without it a sign-in group that appears later cannot be
+      // told apart from one the user deliberately ticked.
+      [state.site]: {
+        off: [...state.deselected],
+        seen: state.groups.map((g) => g.domain),
+        skipStorage: state.skipStorage,
+      },
+    },
   });
 }
 
@@ -222,10 +245,42 @@ async function refreshThirdParties() {
 
 /* --------------------------------------------------------------- removing */
 
+/** The arguments chrome.cookies.remove() will actually be given. */
+const removeAddress = (c) => `${cookieUrl(c)}|${c.name}|${c.storeId}|${c.partitionKey ? JSON.stringify(c.partitionKey) : ""}`;
+
 async function removeSelected() {
   const targets = state.groups.filter((g) => !state.deselected.has(g.domain)).flatMap((g) => g.cookies);
 
-  for (const c of targets) {
+  // Rows are grouped by the EXACT cookie domain, so a host-only cookie
+  // ("example.com") and a domain cookie (".example.com") are two rows the user
+  // ticks independently — told apart only by a leading dot. But cookieUrl()
+  // strips that dot, so both collapse to the same {url, name, storeId} and
+  // remove() cannot be aimed at one of them. Unticking a row therefore did not
+  // protect it: the other row's removal took it too.
+  //
+  // Refuse rather than guess. A cookie the user asked to keep is not something
+  // to delete on the hope that Chrome picks the other one.
+  const protectedAddrs = new Set(
+    state.groups
+      .filter((g) => state.deselected.has(g.domain))
+      .flatMap((g) => g.cookies)
+      .map(removeAddress),
+  );
+  const collided = targets.filter((c) => protectedAddrs.has(removeAddress(c)));
+  state.collisionSkipped = collided.length;
+  if (collided.length) {
+    // Silence here would be the bug all over again: the user unticked
+    // something, it was not deleted, and they should be told which and why.
+    const names = [...new Set(collided.map((c) => c.name))].slice(0, 3).join(", ");
+    state.collisionNote =
+      `${plural(collided.length, "cookie", "cookies")} left in place (${esc(names)}) — ` +
+      `they share an address with one you unticked, and cannot be removed without it.`;
+  } else {
+    state.collisionNote = "";
+  }
+  const safeTargets = targets.filter((c) => !protectedAddrs.has(removeAddress(c)));
+
+  for (const c of safeTargets) {
     const details = { url: cookieUrl(c), name: c.name, storeId: c.storeId };
     // Partitioned (CHIPS) cookies are invisible to a remove() that omits the
     // key — they survive, and the extension would claim otherwise.
@@ -312,7 +367,15 @@ function paintGroups() {
     (signOut
       ? `<p class="notice">This will sign you out of ${esc(state.site)} — and only ${esc(state.site)}.</p>`
       : spared
-        ? `<p class="notice">Keeping the cookies that hold your sign-in, so you'll stay logged in to ${esc(state.site)}. Tick them if you'd rather be signed out.</p>`
+        ? `<p class="notice">Keeping the cookies that hold your sign-in, so you'll stay logged in to ${esc(state.site)}.${
+            // Sparing the cookie does not keep you signed in if the site keeps its
+            // session in site data, and that box is ticked by default. Promising
+            // unconditionally in the same view that clears localStorage and
+            // IndexedDB is a claim the very next click can disprove.
+            hasStorage && !state.skipStorage
+              ? " Site data is ticked below, though — if this site keeps your login there rather than in a cookie, clearing it will sign you out."
+              : ""
+          } Tick them if you'd rather be signed out.</p>`
         : "") +
     `<div class="section">Cookies</div>${rows || '<div class="pad"><span class="empty">No cookies stored.</span></div>'}` +
     `<div class="section">Site data</div>${storageRow}` +
@@ -362,10 +425,17 @@ async function paintMaster() {
   const box = $("#enabled");
   $("#master").hidden = false;
   box.checked = prefs.autoClear;
-  $("#stateText").textContent = prefs.autoClear ? "Clearing on" : "Clearing off";
-  $("#stateSub").textContent = prefs.autoClear
-    ? "Sites cleared as you close their last tab"
-    : "Nothing is cleared unless you ask";
+  // Three states, not two. The sweep refuses to act without the browser-wide
+  // grant (background.js), and this very panel provides the button that takes
+  // that grant away — "Limit to one site" revokes it and leaves autoClear true.
+  // The header then read "Clearing on" while nothing was being cleared.
+  const blocked = prefs.autoClear && !state.allSites;
+  $("#stateText").textContent = !prefs.autoClear ? "Clearing off" : blocked ? "Clearing paused" : "Clearing on";
+  $("#stateSub").textContent = !prefs.autoClear
+    ? "Nothing is cleared unless you ask"
+    : blocked
+      ? "Needs access to every site — you took that back"
+      : "Sites cleared as you close their last tab";
 
   box.onchange = async () => {
     if (box.checked && !state.allSites) {
@@ -401,6 +471,34 @@ function paintScope() {
   });
 }
 
+/**
+ * The auto-clear log, rendered wherever the user can be.
+ *
+ * autoLog and lastAuto used to be read and painted ONLY inside paintAll(),
+ * which is reachable only after the browser-wide grant and only in "Every site"
+ * mode. So the single most likely failure — the sweep aborting for lack of that
+ * grant, the one case background.js bothers to write a note for — produced a
+ * note nobody could ever read. A self-report that disappears exactly when it
+ * has something to report is not a self-report.
+ *
+ * This is a read of chrome.storage.local and needs no host permission at all.
+ */
+async function autoLogBlock(limit = 5) {
+  try {
+    const { autoLog } = await chrome.storage.local.get("autoLog");
+    if (!(autoLog || []).length) return "";
+    return (
+      `<div class="section">What it has been doing</div>` +
+      `<div class="pad log">${autoLog
+        .slice(0, limit)
+        .map((e) => `<div><span>${new Date(e.t).toLocaleTimeString()}</span> ${esc(e.line)}</div>`)
+        .join("")}</div>`
+    );
+  } catch {
+    return "";
+  }
+}
+
 async function paintScan() {
   state.groups = await scan();
   await loadSelection();
@@ -410,6 +508,15 @@ async function paintScan() {
   paintScope();
   paintStats();
   paintMaster();
+  // The default mode used to render neither lastAuto nor autoLog, so a user
+  // who never switches to "Every site" had no way to see what the background
+  // sweep had been doing — or failing to do.
+  try {
+    const log = await autoLogBlock(3);
+    if (log) $("#main").insertAdjacentHTML("beforeend", log);
+  } catch {
+    /* reporting only */
+  }
 }
 
 /* ----------------------------------------------------------- every site */
@@ -468,6 +575,24 @@ async function scanAll() {
     const site = PSL.registrable(host) || host; // IPs and odd hosts keep their own name
     if (!groups.has(site)) groups.set(site, []);
     groups.get(site).push(c);
+  }
+  // Sites the background worker has seen but which hold no cookies right now.
+  //
+  // The spared list is the whitelist the listing calls absolute — "sites on your
+  // spared list are never touched". But the checkboxes that write it were built
+  // only from cookies.getAll(), so a site with no cookies could never be added
+  // to it, while auto-clear would still wipe its localStorage, IndexedDB,
+  // caches and service workers via the origins map. A site whose login lives in
+  // site data rather than a cookie was therefore impossible to protect.
+  //
+  // The union means: anything the sweep can touch is something you can spare.
+  try {
+    const { origins } = await chrome.storage.session.get("origins");
+    for (const site of Object.keys(origins || {})) {
+      if (!groups.has(site)) groups.set(site, []);
+    }
+  } catch {
+    /* session storage unavailable — fall back to the cookie-bearing sites */
   }
   return [...groups]
     .map(([site, cookies]) => ({
@@ -554,6 +679,10 @@ async function paintAll() {
     }.${
       lastAuto ? `<span class="last">Last: ${esc(lastAuto.site)} — ${plural(lastAuto.removed, "cookie", "cookies")} removed${
         lastAuto.kept ? `, ${plural(lastAuto.kept, "sign-in", "sign-ins")} kept` : ""
+      }${
+        // Verified after the sweep, not counted before it. If the guard failed,
+        // say so here and not only in the log.
+        lastAuto.lostSignIns ? ` — ${plural(lastAuto.lostSignIns, "sign-in", "sign-ins")} did NOT survive` : ""
       }, ${ago(lastAuto.at)}</span>` : ""
     }</span></span>
   </div>
@@ -581,7 +710,12 @@ async function paintAll() {
         <input type="checkbox" data-site="${esc(g.site)}" ${spared ? "" : "checked"} />
         <span class="gmain">
           <span class="gname">${esc(g.site)}${g.signIn ? `<span class="tag warn">${g.signIn} sign-in</span>` : ""}</span>
-          <span class="gmeta">${plural(g.cookies.length, "cookie", "cookies")} · ${
+          <span class="gmeta">${
+            // A site can now appear here with no cookies at all — see scanAll().
+            // It is listed because auto-clear can still wipe its site data, and
+            // the whitelist has to be able to cover that.
+            g.cookies.length ? plural(g.cookies.length, "cookie", "cookies") : "site data only"
+          } · ${
             spared ? "left alone" : going ? `${going} to remove${kept ? `, ${kept} kept` : ""}` : `nothing to remove, ${kept} kept`
           }</span>
         </span>
@@ -735,9 +869,12 @@ async function runGlobalRemoval(prefs) {
   $("#againAll").addEventListener("click", startAll);
 }
 
-function renderNeedAll() {
+async function renderNeedAll() {
   $("#sub").textContent = "not allowed yet";
-  $("#main").innerHTML = `<div class="pad">
+  // This is precisely the state in which the background sweep gives up, so
+  // this is precisely where its log has to be visible.
+  const log = await autoLogBlock();
+  $("#main").innerHTML = log + `<div class="pad">
     <p class="lead">Cleaning every site means reading every site's cookies, so this one
     needs the browser-wide permission. It is asked for once and you can take it back
     from the line under any site's list.</p>
@@ -754,7 +891,7 @@ function renderNeedAll() {
 async function startAll() {
   $("#host").textContent = "Every site";
   state.allSites = await chrome.permissions.contains({ origins: [ALL_SITES] });
-  if (!state.allSites) return renderNeedAll();
+  if (!state.allSites) return await renderNeedAll();
   $("#sub").textContent = "reading every cookie…";
   state.allGroups = await scanAll();
   await paintAll();
@@ -841,6 +978,7 @@ async function runRemoval() {
       : storageLeft === 0 ? '<p class="result">Site data cleared, and confirmed empty.</p>'
       : `<p class="result kept">${plural(storageLeft, "item", "items")} of site data present again — the open page rebuilds it as it runs.</p>`}
     ${untouched ? `<p class="result">${plural(untouched, "cookie", "cookies")} left alone, as you asked.</p>` : ""}
+    ${state.collisionNote ? `<p class="result kept">${state.collisionNote}</p>` : ""}
     <p class="result">Counted after deleting, not assumed from it.</p>
   </div>`;
 

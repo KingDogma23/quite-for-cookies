@@ -84,9 +84,18 @@ clear when their last tab closes.
 - **cookies** — lists and deletes cookies. This is the extension's function.
 - **browsingData** — clears local storage, IndexedDB, cache storage and service
   workers, restricted to the origin of the site you are looking at.
-- **scripting** — runs a short read-only snippet in the page to count the
-  cookies the page itself can see, and to list the third-party domains the page
-  loaded. This is what makes the preview accurate rather than approximate.
+- **scripting** — injects three short snippets into the page you are looking
+  at. One measures the site data the page holds — local storage, session
+  storage, databases, caches and service workers — so the preview shows what
+  is really there rather than an estimate. One lists the third-party domains
+  the page loaded. The third clears session storage when you ask for site
+  data to be removed, because the browsingData API has no session-storage
+  type and it cannot be cleared any other way.
+
+  (This bullet previously said the snippet was "read-only" and that it counts
+  "the cookies the page itself can see". Neither was true: nothing in the
+  extension reads document.cookie, and the third snippet deletes data. It was
+  submitted to review in that form.)
 - **storage** — remembers which domains you have chosen to spare on each site,
   the totals shown in the popup, and the record of what the automatic clear has
   done. Nothing leaves the browser.

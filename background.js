@@ -205,6 +205,14 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
   );
   const removed = before.filter((c) => !still.has(`${c.storeId}|${c.domain}|${c.path}|${c.name}`)).length;
 
+  // `kept` above is a count of what was spared BEFORE the removal loop, and it
+  // was reported to the user as an outcome — "N sign-ins kept" — without
+  // anything checking they survived. A claim that cannot fail is not a claim.
+  // The re-read above already tells us; use it.
+  const spared = prefs.autoKeepLogins ? present.filter(self.looksLikeSignIn) : [];
+  const keptNow = spared.filter((c) => still.has(`${c.storeId}|${c.domain}|${c.path}|${c.name}`)).length;
+  const lostSignIns = spared.length - keptNow;
+
   /**
    * Cookies alone are not enough, and this was measured rather than assumed: on
    * independent.co.uk the sweep removed the cookies and both the Chartbeat id
@@ -213,16 +221,22 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
    * only, and calling the site cleaned, would have been a true sentence that
    * misleads — which is the one thing this extension is not allowed to be.
    */
-  let storageCleared = 0;
+  // NOTE ON WORDING: this counts origins the browser was ASKED to clear, not
+  // origins verified empty afterwards. browsingData.remove() reports nothing
+  // back, and by the time the sweep runs the tab is gone, so there is no page
+  // left to measure from. The cookie half above is a genuine re-count; this half
+  // cannot be, and the log now says "requested" rather than "cleared" instead of
+  // implying a verification that never happened.
+  let storageRequested = 0;
   if (prefs.autoClearStorage && siteOrigins.length) {
     const types = { cacheStorage: true, fileSystems: true, indexedDB: true, localStorage: true, serviceWorkers: true };
     try {
       await chrome.browsingData.remove({ origins: siteOrigins }, types);
-      storageCleared = siteOrigins.length;
+      storageRequested = siteOrigins.length;
     } catch {
       try {
         await chrome.browsingData.remove({ origins: siteOrigins }, { indexedDB: true, localStorage: true, cacheStorage: true });
-        storageCleared = siteOrigins.length;
+        storageRequested = siteOrigins.length;
       } catch {
         /* reported as zero rather than assumed */
       }
@@ -238,10 +252,13 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
 
   await chrome.storage.local.set({
     stats: next,
-    lastAuto: { site, removed, kept, at: Date.now() },
+    lastAuto: { site, removed, kept: keptNow, lostSignIns, at: Date.now() },
   });
   note(
-    `${site}: removed ${removed} of ${before.length}, kept ${kept}` +
-      (prefs.autoClearStorage ? `, site data cleared for ${storageCleared} origin(s)` : ""),
+    `${site}: removed ${removed} of ${before.length}, kept ${keptNow}` +
+      // Loud, because it means the guard did not hold: a cookie the sweep was
+      // told to spare is gone, and nobody was watching when it happened.
+      (lostSignIns ? ` — ${lostSignIns} SIGN-IN(S) DID NOT SURVIVE` : "") +
+      (prefs.autoClearStorage ? `, site data clear requested for ${storageRequested} origin(s)` : ""),
   );
 });
