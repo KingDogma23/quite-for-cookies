@@ -39,6 +39,20 @@ let noteChain = Promise.resolve();
  *   whether or not anything followed, so a handful of ordinary closes pushed the
  *   one line that mattered out of view.
  */
+/**
+ * See popup.js getAllCookies(): an unqualified getAll omits PARTITIONED (CHIPS)
+ * cookies entirely, so the tab-close sweep could neither find nor remove them
+ * while its removal code forwarded a partitionKey. Measured in Chrome 152 on
+ * 2026-08-30. The empty-object form falls back if a Chrome version rejects it.
+ */
+async function getAllCookies(query = {}) {
+  try {
+    return await chrome.cookies.getAll({ ...query, partitionKey: {} });
+  } catch {
+    return await chrome.cookies.getAll(query);
+  }
+}
+
 function note(line, kind = "outcome") {
   // Serialised: concurrent tab events each did get-modify-set, and the later
   // write overwrote the earlier one. An instrument that drops its own readings
@@ -100,7 +114,13 @@ async function seedFromOpenTabs(reason) {
     remember(origins, site, t.url);
   }
   await chrome.storage.session.set({ tabsites: map, origins });
-  note(`${reason} — tracking ${Object.keys(map).length} open tab(s)` + (skipped ? `, ${skipped} incognito tab(s) left alone` : ""));
+  // A worker restart is bookkeeping; a permission change is not. Tagging the
+  // restart as trace keeps the sweep outcomes visible — a browser that suspends
+  // the worker often would otherwise bury them.
+  note(
+    `${reason} — tracking ${Object.keys(map).length} open tab(s)` + (skipped ? `, ${skipped} incognito tab(s) left alone` : ""),
+    reason === "worker started" ? "trace" : "outcome",
+  );
 }
 
 seedFromOpenTabs("worker started");
@@ -182,7 +202,7 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
   const origins = await originMap();
   const siteOrigins = origins[site] || [];
 
-  const present = await chrome.cookies.getAll({ domain: site });
+  const present = await getAllCookies({ domain: site });
   // Sign-ins are spared by default. Closing a tab should tidy the tracking, not
   // evict you from the site — and nobody is watching when this runs.
   const kept = prefs.autoKeepLogins ? present.filter(self.looksLikeSignIn).length : 0;
@@ -208,7 +228,7 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
   // Count only the ones we asked for: a re-count of the whole domain would
   // report the spared sign-ins as failures.
   const still = new Set(
-    (await chrome.cookies.getAll({ domain: site })).map((c) => `${c.storeId}|${c.domain}|${c.path}|${c.name}`),
+    (await getAllCookies({ domain: site })).map((c) => `${c.storeId}|${c.domain}|${c.path}|${c.name}`),
   );
   const removed = before.filter((c) => !still.has(`${c.storeId}|${c.domain}|${c.path}|${c.name}`)).length;
 

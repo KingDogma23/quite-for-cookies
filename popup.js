@@ -58,6 +58,33 @@ const esc = (s) => String(s).replace(/[<>&"]/g, (c) => ({ "<": "&lt;", ">": "&gt
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 const kb = (n) => (n < 1024 ? `${n} B` : `${(n / 1024).toFixed(1)} KB`);
 
+/**
+ * chrome.cookies.getAll, including PARTITIONED (CHIPS) cookies.
+ *
+ * An unqualified getAll returns only unpartitioned cookies. Measured in Chrome
+ * 152 on 2026-08-30, on one host holding one of each:
+ *
+ *   getAll({domain})                    -> [plain]              partitioned invisible
+ *   getAll({})                          -> [plain]              invisible to the whole-browser sweep too
+ *   getAll({domain, partitionKey: PK})  -> [partitioned]
+ *   getAll({domain, partitionKey: {}})  -> [partitioned, plain] <- all partitions
+ *
+ * So every read path was blind to them while the delete path carefully forwarded
+ * a partitionKey it would never be given. The preview under-reported, the
+ * per-site list omitted them, and the browser-wide sweep never saw them.
+ *
+ * The empty-object form is not accepted by every Chrome version, so a failure
+ * falls back to the plain call rather than returning nothing — under-reporting
+ * is bad, reporting zero cookies on a site that has them is worse.
+ */
+async function getAllCookies(query = {}) {
+  try {
+    return await chrome.cookies.getAll({ ...query, partitionKey: {} });
+  } catch {
+    return await chrome.cookies.getAll(query);
+  }
+}
+
 function cookieUrl(c) {
   const host = c.domain.startsWith(".") ? c.domain.slice(1) : c.domain;
   return `${c.secure ? "https" : "http"}://${host}${c.path}`;
@@ -228,7 +255,7 @@ async function scan() {
   const domains = [state.site, ...state.thirdParties.filter((t) => t.granted).map((t) => t.domain)];
   const seen = new Map();
   for (const domain of domains) {
-    for (const c of await chrome.cookies.getAll({ domain })) {
+    for (const c of await getAllCookies({ domain })) {
       seen.set(`${c.storeId}|${c.domain}|${c.path}|${c.name}`, c);
     }
   }
@@ -387,7 +414,17 @@ function paintGroups() {
   const spared = state.groups.filter((g) => g.signIn && state.deselected.has(g.domain)).length;
   $("#main").innerHTML =
     (signOut
-      ? `<p class="notice">This will sign you out of ${esc(state.site)} — and only ${esc(state.site)}.</p>`
+      ? (() => {
+          // "and only X" was asserted, not computed. `selected` includes any
+          // third-party group the user has granted through "Include their
+          // cookies too", so a sign-in cookie on one of those was about to go
+          // while the notice promised the opposite. Name them instead.
+          const outs = [...new Set(selected.filter((g) => g.signIn).map((g) => g.domain.replace(/^\./, "")))];
+          const others = outs.filter((d) => d !== state.site && !d.endsWith("." + state.site));
+          return others.length
+            ? `<p class="notice">This will sign you out of ${esc(state.site)}, and also of ${others.map((d) => esc(d)).join(", ")}.</p>`
+            : `<p class="notice">This will sign you out of ${esc(state.site)} — and only ${esc(state.site)}.</p>`;
+        })()
       : spared
         ? `<p class="notice">Keeping the cookies that hold your sign-in, so you'll stay logged in to ${esc(state.site)}.${
             // Sparing the cookie does not keep you signed in if the site keeps its
@@ -597,7 +634,7 @@ async function saveGlobalPrefs(patch) {
 
 async function scanAll() {
   const groups = new Map();
-  for (const c of await chrome.cookies.getAll({})) {
+  for (const c of await getAllCookies()) {
     const host = c.domain.replace(/^\./, "");
     const site = PSL.registrable(host) || host; // IPs and odd hosts keep their own name
     if (!groups.has(site)) groups.set(site, []);
@@ -694,7 +731,12 @@ async function paintAll() {
   $("#sub").textContent = `${plural(totalCookies, "cookie", "cookies")} across ${plural(state.allGroups.length, "site", "sites")}`;
   $("#scope").hidden = true;
 
-  const { lastAuto, autoLog } = await chrome.storage.local.get(["lastAuto", "autoLog"]);
+  const { lastAuto } = await chrome.storage.local.get(["lastAuto"]);
+  // One renderer, shared with paintScan() and renderNeedAll(). This view used to
+  // keep its own copy, so the outcome-vs-trace filter fixed in autoLogBlock()
+  // did not apply here — the every-site view still showed "tab 1234 closed"
+  // lines pushing the outcomes down. Seen on screen, not reasoned about.
+  const logBlock = await autoLogBlock(8);
   const ago = (t) => {
     const m = Math.round((Date.now() - t) / 60000);
     return m < 1 ? "just now" : m < 60 ? `${plural(m, "minute", "minutes")} ago` : `${plural(Math.round(m / 60), "hour", "hours")} ago`;
@@ -774,9 +816,7 @@ async function paintAll() {
        it now covers the ones that caught us out, but a site with an unusual name can still slip through.</span></span>
      </label>
      ${autoRow}
-     ${(autoLog || []).length ? `<div class="section">What it has been doing</div>
-       <div class="pad log">${autoLog.slice(0, 8).map((e) =>
-         `<div><span>${new Date(e.t).toLocaleTimeString()}</span> ${esc(e.line)}</div>`).join("")}</div>` : ""}
+     ${logBlock}
      <div class="section">Sites</div>
      ${state.expanded ? `<div class="find"><input id="find" type="search" placeholder="Find a site — type part of its name" /></div>${rows}<div class="nohits" id="nohits" hidden>No site matches that.</div>` : `<div class="pad"><p class="lead">${plural(state.allGroups.length, "site", "sites")} found. ${
        prefs.spared.length ? `${plural(prefs.spared.length, "site is", "sites are")} on your spared list.` : "Nothing is on your spared list."

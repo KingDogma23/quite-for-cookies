@@ -4,7 +4,7 @@ Publisher: **Quite Apps**  ·  Contact: **support@quiteapps.co.uk**
 Store:  **https://chromewebstore.google.com/detail/quite-for-cookies/iagkmeadnfkmgocminiglpibkcnibnch**
 Source: **github.com/KingDogma23/quite-for-cookies**
 Package: `dist/cookie-cleaner-<version>-store.zip` (built with `./package.sh --store`)
-Current version: **0.22.4**
+Current version: **0.22.5**
 
 > The zip is named from the working directory, which is still `cookie-cleaner`
 > while the repository is `quite-for-cookies`. Harmless, but do not let it read
@@ -152,12 +152,25 @@ On what the numbers in them are. The per-site screenshot shows a real bbc.co.uk
 scan measured on 2026-08-27 — 22 cookies across 3 domains, and the sizes and
 sign-in markings are that scan's. The ALL TIME counters read 357 / 45 / 228,
 which are real measured totals from a profile in use; earlier versions of these
-screenshots showed a fresh install's zeros instead. The "last sweep" line and the
-after-the-fact report depict a plausible run of that same bbc.co.uk scan rather
-than a separately measured one, since a background sweep cannot be screenshotted
-as it happens.
+screenshots showed a fresh install's zeros instead.
 
-## Testing notes for review (0.22.4)
+Screenshot 02 was regenerated on 2026-08-30 and is now an OBSERVED run, not a
+composed one. It previously depicted "a plausible run" of the bbc.co.uk scan on
+the grounds that a background sweep cannot be screenshotted as it happens —
+true of the sweep itself, but not of what it leaves behind. The procedure: load
+the extension unpacked, grant the browser-wide permission, switch the automatic
+clear on, open bbc.co.uk and theguardian.com in turn and close each tab, then
+screenshot the popup. Everything in the panel is that run — all-time totals of
+26 cookies / 0 data items / 2 sites, and "Last: theguardian.com — 6 cookies
+removed, 1 sign-in kept". The sign-in that was kept is verified against a
+re-read, not counted before the deletion.
+
+The popup image is a live capture of the real 2.6.x popup rather than a mock, so
+it also shows the corrected tracker-mode wording and the sign-in checkbox
+enabled in that mode. Regenerate from store/screenshot-02-source.html at exactly
+1280x800, device scale 1.
+
+## Testing notes for review (0.22.5)
 
 The automatic clear was verified on 38 sites using a planted probe cookie that
 the site cannot regenerate. It was gone on all 38. Two negative controls hold: a
