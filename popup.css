@@ -46,15 +46,44 @@ button + button { margin-top: 6px; }
 .group:last-child { border-bottom: 0; }
 .group input { margin: 3px 0 0; accent-color: var(--brand); }
 .gmain { flex: 1; min-width: 0; }
+/* Brand lockup, matching Quite for YouTube / Facebook / Instagram. Without it
+   the popup opened on a bare domain name and never said which product it was,
+   and the build was only visible in the diagnostics line at the very bottom. */
+.brand { display: flex; align-items: center; gap: 8px; padding: 12px 16px 0; }
+.brand img { width: 22px; height: 22px; border-radius: 6px; }
+.brand h1 { margin: 0; font-size: 15px; letter-spacing: -0.01em; font-weight: 650; }
+.brand h1 span { color: var(--muted); font-weight: 450; }
+.ver { margin-left: auto; font-size: 10px; color: var(--muted);
+  font-family: ui-monospace, Menlo, monospace; }
+
+/* The domain truncates; the TAGS must not. "third party" and "N sign-in" are
+   the labels you read before deciding to delete something, and they used to sit
+   inside .gname — so a long domain pushed them out of the nowrap box and they
+   were sliced mid-word ("chromewebstore.google.com third party 2 sign-").
+   Splitting them means the domain ellipsises and the labels always survive. */
+.gtop { display: flex; align-items: baseline; min-width: 0; }
 .gname { font-family: ui-monospace, Menlo, monospace; font-size: 12px;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  flex: 1 1 auto; min-width: 0; }
+.gtags { flex: 0 0 auto; white-space: nowrap; }
+
+/* Which arm this reading is, and whether it can be believed. */
+.arm { margin: 10px 16px 12px; padding-top: 9px; border-top: 1px solid var(--line);
+  font: 11.5px/1.5 ui-monospace, Menlo, monospace; color: var(--muted); }
+.arm b { color: var(--fg); font-weight: 600; }
+.arm .warn { color: var(--warn-fg); }
 .gmeta { color: var(--muted); font-size: 11.5px; }
 .tag { display: inline-block; padding: 1px 6px; border-radius: 5px; font-size: 10.5px;
   font-weight: 650; background: var(--sunk); color: var(--muted); margin-left: 6px; vertical-align: 1px; }
 .tag.warn { background: var(--warn-bg); color: var(--warn-fg); }
 
 .notice { margin: 0; padding: 10px 16px; background: var(--warn-bg); color: var(--warn-fg); font-size: 12px; }
-.section { padding: 9px 16px 4px; font-size: 11px; text-transform: uppercase;
+/* Pinned. `main` scrolls, and these headers sat inside it — so "Cookies" and
+   "Site data" scrolled out of view the moment the list was long enough to
+   scroll, which on a news site is immediately. You were then reading a list of
+   domains with nothing on screen saying what the list was. */
+.section { position: sticky; top: 0; z-index: 2;
+  padding: 9px 16px 4px; font-size: 11px; text-transform: uppercase;
   letter-spacing: .05em; color: var(--muted); background: var(--sunk); }
 .result { font-size: 12px; color: var(--muted); margin: 0 0 10px; }
 .result b { color: var(--fg); }

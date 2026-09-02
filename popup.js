@@ -17,6 +17,12 @@
  * return value of the delete call. Count again afterwards and report the count.
  */
 
+// The build, as a literal. NOT chrome.runtime.getManifest(): that returns the
+// version of the LOADED extension rather than of the code running, so after a
+// reload an old popup would report the new version. package.sh refuses to build
+// if this disagrees with manifest.json.
+const VERSION = "0.22.8";
+
 const $ = (s) => document.querySelector(s);
 const pattern = (domain) => `*://*.${domain}/*`;
 
@@ -371,11 +377,19 @@ function paintGroups() {
     .map((g) => {
       const tags =
         (g.firstParty ? "" : '<span class="tag">third party</span>') +
-        (g.signIn ? `<span class="tag warn">${plural(g.signIn, "sign-in", "sign-in")}</span>` : "");
+        // "kept", not "sign-in". looksLikeSignIn() spares a cookie if its name
+        // reads like a session OR it is simply Secure+HttpOnly — which nearly
+        // every Google cookie is, tracking ones included. Labelling those
+        // "sign-in" states as fact something the heuristic only suspects, and
+        // it is deliberately generous because signing someone out is the
+        // expensive error. The tooltip says so rather than the badge implying it.
+        (g.signIn
+          ? `<span class="tag warn" title="Kept by default: the name looks like a session, or the cookie is Secure and HttpOnly. That is deliberately cautious — it spares some cookies that were never logins, because signing you out is the worse mistake. Tick the box to remove them anyway.">${g.signIn} kept</span>`
+          : "");
       return `<label class="group">
         <input type="checkbox" data-domain="${esc(g.domain)}" ${state.deselected.has(g.domain) ? "" : "checked"} />
         <span class="gmain">
-          <span class="gname">${esc(g.domain)}${tags}</span>
+          <span class="gtop"><span class="gname">${esc(g.domain)}</span><span class="gtags">${tags}</span></span>
           <span class="gmeta">${plural(g.cookies.length, "cookie", "cookies")} · ${kb(g.bytes)}</span>
         </span>
       </label>`;
@@ -412,6 +426,10 @@ function paintGroups() {
   const signOut = selected.filter((g) => g.signIn).length;
 
   const spared = state.groups.filter((g) => g.signIn && state.deselected.has(g.domain)).length;
+  // attacker-controlled value here is escaped — esc(state.site) x4, others via
+  // esc(d), rows via esc(g.domain), storageRow via esc(state.origin). tags and
+  // bits are literals plus plural() over string literals.
+  // eslint-disable-next-line no-unsanitized/property -- verified 2026-09-01: every
   $("#main").innerHTML =
     (signOut
       ? (() => {
@@ -451,6 +469,7 @@ function paintGroups() {
     : "Nothing selected";
 
   $("#footer").hidden = false;
+  // eslint-disable-next-line no-unsanitized/property -- verified 2026-09-01: label is built at 447-451 from plural() over string literals; the other interpolation is a boolean ternary emitting `disabled`. Every attacker-controlled value (cookie domain, site name) goes through esc().
   $("#footer").innerHTML = `<button id="go" ${total || clearingStorage ? "" : "disabled"}>${label}</button>`;
 
   $("#main").querySelectorAll("input[data-domain]").forEach((box) =>
@@ -516,6 +535,7 @@ function paintScope() {
   const el = $("#scope");
   el.hidden = false;
   // "Allowed for bbc.co.uk" never said allowed to do what. Name the capability.
+  // eslint-disable-next-line no-unsanitized/property -- verified 2026-09-01: the only interpolation is esc(state.site); the other branch is a literal. Every attacker-controlled value (cookie domain, site name) goes through esc().
   el.innerHTML = state.allSites
     ? `<span>Can read cookies on <b>every site</b></span><button id="scopeToggle">Limit to one site</button>`
     : `<span>Can read cookies on <b>${esc(state.site)}</b> only</span><button id="scopeToggle">Allow every site</button>`;
@@ -572,11 +592,13 @@ async function paintScan() {
   paintScope();
   paintStats();
   paintMaster();
+  paintArm();
   // The default mode used to render neither lastAuto nor autoLog, so a user
   // who never switches to "Every site" had no way to see what the background
   // sweep had been doing — or failing to do.
   try {
     const log = await autoLogBlock(3);
+    // eslint-disable-next-line no-unsanitized/method -- verified 2026-09-01: log comes from autoLogBlock(), which builds HTML from literals, a locale time string, and esc(e.line). Every attacker-controlled value (cookie domain, site name) goes through esc().
     if (log) $("#main").insertAdjacentHTML("beforeend", log);
   } catch {
     /* reporting only */
@@ -780,7 +802,7 @@ async function paintAll() {
       return `<label class="group">
         <input type="checkbox" data-site="${esc(g.site)}" ${spared ? "" : "checked"} />
         <span class="gmain">
-          <span class="gname">${esc(g.site)}${g.signIn ? `<span class="tag warn">${g.signIn} sign-in</span>` : ""}</span>
+          <span class="gtop"><span class="gname">${esc(g.site)}</span><span class="gtags">${g.signIn ? `<span class="tag warn">${g.signIn} sign-in</span>` : ""}</span></span>
           <span class="gmeta">${
             // A site can now appear here with no cookies at all — see scanAll().
             // It is listed because auto-clear can still wipe its site data, and
@@ -794,6 +816,7 @@ async function paintAll() {
     })
     .join("");
 
+  // eslint-disable-next-line no-unsanitized/property -- verified 2026-09-01: interpolations are counts, plural() over literals, autoRow/logBlock (both escaped), and rows (every site name via esc(g.site) at 781). Every attacker-controlled value (cookie domain, site name) goes through esc().
   $("#main").innerHTML =
     `<label class="choice">
        <input type="radio" name="sweep" value="trackers" ${prefs.mode === "trackers" ? "checked" : ""} />
@@ -823,6 +846,7 @@ async function paintAll() {
      }</p><button id="expand" class="ghost">Review them one by one</button></div>`}`;
 
   $("#footer").hidden = false;
+  // eslint-disable-next-line no-unsanitized/property -- verified 2026-09-01: both interpolations are plural() over string literals. Every attacker-controlled value (cookie domain, site name) goes through esc().
   $("#footer").innerHTML = `<button id="goAll" ${targets.length ? "" : "disabled"}>Remove ${plural(targets.length, "cookie", "cookies")}</button>`;
 
   $("#expand")?.addEventListener("click", () => { state.expanded = true; paintAll(); });
@@ -925,6 +949,7 @@ async function runGlobalRemoval(prefs) {
     .map((c) => PSL.registrable(c.domain.replace(/^\./, "")) || c.domain))];
   paintStats(await addStats(gone, 0, touched));
 
+  // eslint-disable-next-line no-unsanitized/property -- verified 2026-09-01: all five interpolations are plural() over string literals. Every attacker-controlled value (cookie domain, site name) goes through esc().
   $("#main").innerHTML = `<div class="pad">
     <p class="result"><b>${plural(gone, "cookie", "cookies")} removed</b> across the browser.</p>
     ${stuck ? `<p class="result kept">${plural(stuck, "cookie", "cookies")} could not be removed.</p>` : ""}
@@ -943,6 +968,7 @@ async function renderNeedAll() {
   // This is precisely the state in which the background sweep gives up, so
   // this is precisely where its log has to be visible.
   const log = await autoLogBlock();
+  // eslint-disable-next-line no-unsanitized/property -- verified 2026-09-01: log comes from autoLogBlock(); the rest of the template is literal. Every attacker-controlled value (cookie domain, site name) goes through esc().
   $("#main").innerHTML = log + `<div class="pad">
     <p class="lead">Cleaning every site means reading every site's cookies, so this one
     needs the browser-wide permission. It is asked for once and you can take it back
@@ -950,6 +976,8 @@ async function renderNeedAll() {
     <p class="lead">Nothing is read or removed until you allow it.</p>
   </div>`;
   $("#footer").hidden = false;
+  paintMaster();
+  paintArm();
   $("#footer").innerHTML = `<button id="grantAll2">Allow reading every site</button>`;
   $("#grantAll2").addEventListener("click", async () => {
     try { await chrome.permissions.request({ origins: [ALL_SITES] }); } catch {}
@@ -965,6 +993,69 @@ async function startAll() {
   state.allGroups = await scanAll();
   await paintAll();
   paintStats();
+  paintMaster();
+  paintArm();
+}
+
+/**
+ * States which arm this reading is, and whether it can be believed.
+ *
+ * chrome.cookies.getAll returns an EMPTY ARRAY and no error when the permission
+ * is not held, so "no cookies stored" and "not allowed to look" are identical
+ * on screen unless something says which happened. Every reading carries its own
+ * validity: three states, never two.
+ *
+ * It also names the build. Without it there was no way to confirm which code
+ * was running — the first gate in CLAUDE.md — and the version checks in
+ * preflight.py were passing vacuously because there was no literal to check.
+ */
+function paintBrand() {
+  const el = $("#ver");
+  if (el) el.textContent = "v" + VERSION;
+}
+
+function paintArm() {
+  const el = $("#arm");
+  if (!el) return;
+  el.hidden = false;
+  const scope = state.mode === "all" ? "every site" : (state.site || "this tab");
+
+  // THREE STATES, and they must stay three.
+  //   true   the permission is held, so an empty list really means empty
+  //   false  it is not held: chrome.cookies.getAll returns an empty array and
+  //          NO error, so "nothing stored" and "not allowed to look" are
+  //          indistinguishable on screen unless this says which
+  //   null   not determined yet — NOT the same as denied
+  //
+  // The first version of this collapsed null into false, so a permission that
+  // had simply not been checked yet was reported as "NO ACCESS". That is the
+  // exact two-state collapse the function exists to prevent, written into the
+  // function itself.
+  const granted = state.mode === "all" ? state.allSites : state.siteGranted;
+  const scanned = granted === undefined || granted === null ? null : !!granted;
+
+  // Built from DOM nodes and textContent rather than innerHTML: not building
+  // HTML at all beats proving the escaping is right, and leaves nothing for a
+  // future edit to get wrong.
+  el.replaceChildren();
+  const line1 = document.createElement("div");
+  if (scanned === null) {
+    line1.className = "warn";
+    line1.textContent = "ARM: NO READING \u2014 access has not been checked yet";
+  } else if (scanned === false) {
+    line1.className = "warn";
+    line1.textContent =
+      "ARM: NO ACCESS \u2014 an empty list here means \u201cnot allowed to look\u201d, " +
+      "not \u201cnothing stored\u201d";
+  } else {
+    line1.textContent =
+      "ARM: READING WITH ACCESS \u2014 nothing is deleted until you press the button";
+  }
+  const line2 = document.createElement("div");
+  const b = document.createElement("b");
+  b.textContent = "v" + VERSION;
+  line2.append(b, document.createTextNode(" \u00b7 scope: " + scope));
+  el.append(line1, line2);
 }
 
 function paintTabs() {
@@ -1065,6 +1156,7 @@ async function runRemoval() {
       : Math.max(0, storageBefore - storageLeft);
   paintStats(await addStats(gone, itemsCleared, gone || itemsCleared ? [state.site] : []));
 
+  // eslint-disable-next-line no-unsanitized/property -- verified 2026-09-01: interpolations are counts and plural() over string literals. Every attacker-controlled value (cookie domain, site name) goes through esc().
   $("#main").innerHTML = `<div class="pad">
     <p class="result"><b>${plural(gone, "cookie", "cookies")} removed</b> of ${selected.size} selected.</p>
     ${stuck ? `<p class="result kept">${plural(stuck, "cookie", "cookies")} ${stuck === 1 ? "is" : "are"} present again with the same value — either the removal did not take, or the page put it back from its own copy. This repo has measured the second: on one news site the Chartbeat and Permutive ids returned byte-identical from local storage.</p>` : ""}
@@ -1116,6 +1208,7 @@ function renderIntro() {
   $("#scope").hidden = true;
   paintStats();
   paintMaster();
+  paintArm();
   $("#footer").hidden = false;
   $("#footer").innerHTML =
     `<button id="grant">Show what ${esc(state.site)} stored</button>` +
@@ -1173,6 +1266,10 @@ async function start() {
   // report a clean site while being blind to every cookie on it.
   state.allSites = await chrome.permissions.contains({ origins: [ALL_SITES] });
   const perSite = state.allSites || (await chrome.permissions.contains({ origins: [pattern(state.site)] }));
+  // Recorded so the arm line can say which of the two an empty list means. It
+  // was previously read from a field that did not exist, which meant the line
+  // always fell through to its optimistic branch.
+  state.siteGranted = perSite;
   if (!perSite) return renderIntro();
 
   $("#sub").textContent = "reading…";
@@ -1181,4 +1278,5 @@ async function start() {
   await paintScan();
 }
 
+paintBrand();
 start();

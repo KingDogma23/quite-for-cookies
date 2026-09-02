@@ -38,6 +38,32 @@ if not v:
 print(v)
 ')"
 
+
+# ---------------------------------------------------------------- preflight
+# CLAUDE.md's rules, enforced mechanically. Rules that can be quietly skipped
+# are worth less than a script that stops the build; this is that script.
+# Run `python3 ../preflight.py --selftest` to confirm every check can still fail.
+if [[ -f ../preflight.py ]]; then
+  if ! python3 ../preflight.py "$(basename "$PWD")"; then
+    echo "${RED}Preflight failed. Fix the above, or say why it is wrong and fix the check.${OFF}"
+    exit 1
+  fi
+fi
+
+
+# ------------------------------------------------------------------- tests
+# The suite RUNS here. preflight.py only checks that a suite exists with a
+# control in it; until 2026-09-02 nothing actually executed it, so a red suite
+# could not stop a build. Five UI defects shipped that day and were found by the
+# reader, not by anything here.
+if [[ -f test/verify.mjs ]]; then
+  echo "  running test/verify.mjs"
+  if ! node test/verify.mjs; then
+    echo "${RED}Tests failed. Fix them, or fix the test — do not skip it.${OFF}"
+    exit 1
+  fi
+fi
+
 STAGE="dist/${NAME}-${VERSION}"
 ZIP="dist/${NAME}-${VERSION}.zip"
 
