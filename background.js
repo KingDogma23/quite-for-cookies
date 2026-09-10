@@ -19,7 +19,7 @@
  *     indistinguishable from one that never runs, and this one runs where
  *     nobody is watching. Every sweep is recorded and shown in the popup.
  */
-importScripts("psl-data.js", "psl.js", "signin.js", "consent.js");
+importScripts("psl-data.js", "psl.js", "signin.js", "consent.js", "popups-rules.js");
 
 /**
  * Every decision this worker makes is recorded, because it runs where nobody
@@ -307,4 +307,65 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
       (lostConsent ? ` — ${lostConsent} CONSENT ANSWER(S) DID NOT SURVIVE` : "") +
       (prefs.autoClearStorage ? `, site data clear requested for ${storageRequested} origin(s)` : ""),
   );
+});
+
+/**
+ * Pop-up hiding runs only where the user ticked (popups-rules.js, popup.js).
+ *
+ * The manifest names no site. A tick in the popup asks Chrome for access to
+ * that one site; this keeps the registered content scripts equal to the set
+ * of ticked sites that actually have access, and says what it did in the
+ * log. Re-run on install and startup (registrations must match the list, not
+ * the last session's memory of it), whenever access is granted or taken
+ * away, and whenever the list changes.
+ */
+const POPUP_FILES = { js: ["popups-rules.js", "popups.js"], css: ["popups.css"] };
+function popupPatternsFor(site) {
+  const paper = (self.QFC_RULES.papers || []).find((p) => p.site === site);
+  return [site, ...((paper && paper.also) || [])].map((d) => `*://*.${d}/*`);
+}
+let popupSync = Promise.resolve();
+function syncPopupScripts(reason) {
+  popupSync = popupSync
+    .then(async () => {
+      const { globalPrefs } = await chrome.storage.local.get("globalPrefs");
+      const wanted = (globalPrefs && globalPrefs.popupSites) || [];
+      const registered = await chrome.scripting.getRegisteredContentScripts();
+      const have = new Set(registered.filter((r) => r.id.startsWith("qfc-")).map((r) => r.id.slice(4)));
+      const allowed = [];
+      for (const site of wanted) {
+        // Never assumed: a ticked site whose grant was taken away in Chrome's
+        // own settings would otherwise be registered and silently never run.
+        if (await chrome.permissions.contains({ origins: popupPatternsFor(site) })) allowed.push(site);
+      }
+      const toAdd = allowed.filter((s) => !have.has(s));
+      const toRemove = [...have].filter((s) => !allowed.includes(s));
+      if (toRemove.length) await chrome.scripting.unregisterContentScripts({ ids: toRemove.map((s) => "qfc-" + s) });
+      if (toAdd.length) {
+        await chrome.scripting.registerContentScripts(
+          toAdd.map((s) => ({ id: "qfc-" + s, matches: popupPatternsFor(s), js: POPUP_FILES.js, css: POPUP_FILES.css, runAt: "document_start", persistAcrossSessions: true })),
+        );
+      }
+      const denied = wanted.filter((s) => !allowed.includes(s));
+      if (toAdd.length || toRemove.length || denied.length) {
+        note(
+          `pop-ups (${reason}): hiding on ${allowed.length} site(s)` +
+            (toAdd.length ? `, added ${toAdd.join(", ")}` : "") +
+            (toRemove.length ? `, removed ${toRemove.join(", ")}` : "") +
+            (denied.length ? ` — ${denied.length} ticked WITHOUT access: ${denied.join(", ")}` : ""),
+        );
+      }
+    })
+    .catch((e) => note(`pop-ups (${reason}): registering failed — ${e && e.message}`));
+  return popupSync;
+}
+chrome.runtime.onInstalled.addListener(() => syncPopupScripts("installed"));
+chrome.runtime.onStartup.addListener(() => syncPopupScripts("startup"));
+chrome.permissions.onAdded.addListener(() => syncPopupScripts("access granted"));
+chrome.permissions.onRemoved.addListener(() => syncPopupScripts("access removed"));
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "local" || !changes.globalPrefs) return;
+  const before = JSON.stringify(((changes.globalPrefs.oldValue || {}).popupSites) || []);
+  const after = JSON.stringify(((changes.globalPrefs.newValue || {}).popupSites) || []);
+  if (before !== after) syncPopupScripts("sites changed");
 });

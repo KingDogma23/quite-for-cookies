@@ -6,11 +6,12 @@ afterwards that it actually went.
 
 **Consent answers are kept by default.** Clearing a site's cookies deletes the cookie that remembered your answer to its "accept cookies?" pop-up, so the pop-up comes back. The cookies that hold that answer are now spared — beside sign-ins, and unticked the same way if you would rather they went. Sites that store the answer outside cookies will still ask.
 
-**Pop-ups on UK news sites can be hidden** (optional, off by default). On
-twenty UK newspapers the "accept cookies?" dialog and the paper's own subscribe
-and sale pop-ups are hidden, and the page they were holding is unlocked.
-Nothing is answered for you and paid articles stay paid. The popup counts what
-it hid.
+**Pop-ups on UK news sites can be hidden, one paper at a time.** Tick a paper
+in the popup — twenty are offered, and you can add any site — and its "accept
+cookies?" dialog and its own subscribe and sale pop-ups are hidden, with the
+page they were holding unlocked. Each tick asks Chrome for access to that one
+site and nothing else. Nothing is answered for you and paid articles stay
+paid. The popup counts what it hid.
 
 ## Why another one
 
@@ -29,10 +30,10 @@ what this site stored*, it requests access to that one domain, and nothing
 else. Cookies set by other companies the page loaded stay hidden until you
 separately choose to include them.
 
-Since 0.23.0 it also runs a small script on twenty named UK newspaper sites,
-which is where the pop-up hiding lives — Chrome lists those sites at install.
-It runs nowhere else, and on those sites it reads nothing: it hides the named
-pop-up containers and counts them.
+Pop-up hiding works the same way: ticking a paper in the popup asks for access
+to that site, and the script runs only there. Nothing is granted at install.
+On a ticked site it reads nothing: it hides the named pop-up containers and
+counts them.
 
 ## Install (unpacked)
 

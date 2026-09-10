@@ -250,16 +250,22 @@ check('CONTROL: sabotaging the suffix list changes the answer — so these check
         all.length > 0 && all.every((r) => r.name && Array.isArray(r.hide) && r.hide.length && r.hide.every((h) => h.trim() && balanced(h)) && typeof r.measured === 'string' && /20\d\d-\d\d-\d\d/.test(r.measured)),
         `${all.length} rules, ${all.flatMap((r) => r.hide).length} selectors`);
   const manifest = JSON.parse(fs.readFileSync(path.join(EXT, 'manifest.json'), 'utf8'));
-  const cs = (manifest.content_scripts || [])[0] || {};
-  check('popups: the content script loads the rules before the logic, with the stylesheet, at document_start',
-        JSON.stringify(cs.js) === JSON.stringify(['popups-rules.js', 'popups.js']) && JSON.stringify(cs.css) === JSON.stringify(['popups.css']) && cs.run_at === 'document_start',
-        JSON.stringify({ js: cs.js, css: cs.css, run_at: cs.run_at }));
-  const papers = new Set((cs.matches || []).map((m) => m.replace(/^\*:\/\/\*\./, '').replace(/\/\*$/, '')).map((d) => (d === 'thetimes.co.uk' ? 'thetimes.com' : d)));
+  check('popups: the manifest names NO site — nothing runs anywhere until the user ticks it',
+        !manifest.content_scripts && !(manifest.host_permissions || []).length && (manifest.optional_host_permissions || []).includes('*://*/*'),
+        'no content_scripts, no host_permissions, *://*/* optional');
+  const papers = R.papers || [];
+  check('popups: twenty papers are offered, each with a name and a site', papers.length === 20 && papers.every((p) => p.name && /^[a-z0-9.-]+\.[a-z]+$/.test(p.site)), `${papers.length} papers`);
+  check('popups: every site with its own rules is one of the papers', Object.keys(R.sites).every((k) => papers.some((p) => p.site === k)), Object.keys(R.sites).join(', '));
   const pjsRaw = fs.readFileSync(path.join(EXT, 'popup.js'), 'utf8');
-  const sitesConst = Number((pjsRaw.match(/const POPUP_SITES = (\d+);/) || [])[1]);
-  check('popups: the popup says how many papers, and it is the manifest\'s number', papers.size === sitesConst && sitesConst > 0, `${papers.size} papers in the manifest, popup says ${sitesConst}`);
-  check('popups: every site with its own rules is one the script runs on',
-        Object.keys(R.sites).every((k) => (cs.matches || []).includes(`*://*.${k}/*`)), Object.keys(R.sites).join(', '));
+  const bgRaw = fs.readFileSync(path.join(EXT, 'background.js'), 'utf8');
+  check('popups: the worker registers the script per ticked site, at document_start, only where access is held',
+        /registerContentScripts\(/.test(bgRaw) && /unregisterContentScripts\(/.test(bgRaw) && /permissions\.contains\(\{ origins: popupPatternsFor\(site\) \}\)/.test(bgRaw) && /runAt: "document_start"/.test(bgRaw) && bgRaw.includes('js: POPUP_FILES.js, css: POPUP_FILES.css') && bgRaw.includes('js: ["popups-rules.js", "popups.js"], css: ["popups.css"]'),
+        'chrome.scripting.registerContentScripts from globalPrefs.popupSites');
+  check('popups: the worker re-syncs on install, startup, access changes and list changes',
+        ['onInstalled', 'onStartup', 'permissions.onAdded', 'permissions.onRemoved'].every((h) => new RegExp(h.replace('.', '\\.') + '\\.addListener\\(\\(\\) => syncPopupScripts').test(bgRaw)) && /if \(before !== after\) syncPopupScripts\("sites changed"\)/.test(bgRaw), 'four triggers plus the list');
+  check('popups: a tick asks for access to that site alone, and a declined prompt unticks the box',
+        /chrome\.permissions\.request\(\{ origins \}\)/.test(pjsRaw) && pjsRaw.includes('if (!ok) { if (box) box.checked = false; return; }') && pjsRaw.includes('data-popup-site='),
+        'togglePopupSite');
   const { buildPopupsCss } = await import('./build-popups-css.mjs');
   const css = fs.readFileSync(path.join(EXT, 'popups.css'), 'utf8');
   check('popups: popups.css is generated from the rules and matches them', css === buildPopupsCss(rulesSrc), 'node test/build-popups-css.mjs regenerates it');
@@ -269,15 +275,18 @@ check('CONTROL: sabotaging the suffix list changes the answer — so these check
   const js = strip(fs.readFileSync(path.join(EXT, 'popups.js'), 'utf8'));
   const reads = (js.match(/qfcoff=1/g) || []).length;
   check('popups: the bypass switch is read exactly once, into a const', reads === 1 && /const BYPASSED = location\.search\.indexOf\("qfcoff=1"\)/.test(js), `${reads} read(s)`);
-  const forces = (js.match(/qfcon=1/g) || []).length;
-  check('popups: the force-on switch is read exactly once too, and only widens enabled', forces === 1 && /const FORCED = location\.search\.indexOf\("qfcon=1"\)/.test(js) && js.includes('enabled = FORCED ||'), `${forces} read(s)`);
+  check('popups: the stamps are remembered and re-asserted when the page strips them',
+        js.includes('const reassert = () =>') && js.includes('new MutationObserver(reassert).observe(html, { attributes: true })') && js.indexOf('reassert();') > js.indexOf('const sweep = () => {'),
+        'Next.js hydration on mirror.co.uk removed every early stamp');
   check('popups: the version is a literal equal to the manifest', js.includes(`const VERSION = "${manifest.version}";`), manifest.version);
   check('popups: the counter is stamped 0 before anything can increment it', js.includes('set("popups", 0)') && js.indexOf('set("popups", 0)') < js.indexOf('count += 1'), 'data-qfc-popups starts at "0"');
   check('popups: a reading carries the tab visibility and the bypass', /visibilityState/.test(js) && js.includes('"tabhidden"') && js.includes('"bypassed"'), 'data-qfc-tabhidden, data-qfc-bypassed');
   check('popups: an element is counted only if the site rendered it', /rendered\(el\)/.test(js) && /r\.width > 0 && r\.height > 0/.test(js), 'zero-size boxes are not pop-ups');
   const pjs = strip(pjsRaw);
-  check('popups: the option is in the popup, saved under the one key the content script reads',
-        pjs.includes('hidePopups: false') && pjs.includes('id="hidePopups"') && pjs.includes('saveGlobalPrefs({ hidePopups:') && js.includes('prefs.hidePopups'), 'globalPrefs.hidePopups');
+  check('popups: the popup saves the ticked sites under the one key the worker reads',
+        pjs.includes('popupSites: []') && pjs.includes('saveGlobalPrefs({ popupSites:') && bgRaw.includes('globalPrefs.popupSites'), 'globalPrefs.popupSites');
+  check('popups: the popup loads the same rules file the script and the worker load',
+        fs.readFileSync(path.join(EXT, 'popup.html'), 'utf8').includes('<script src="popups-rules.js"></script>') && bgRaw.includes('"popups-rules.js"'), 'popups-rules.js in three places, one file');
   check('popups: the popup shows the count and the last one hidden', pjs.includes('Pop-ups hidden') && pjs.includes('popupStats.last'), 'stats tile + Last line');
 
   // CONTROLS. Each asserts its copy changed — a control whose target text was

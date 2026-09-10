@@ -21,10 +21,7 @@
 // version of the LOADED extension rather than of the code running, so after a
 // reload an old popup would report the new version. package.sh refuses to build
 // if this disagrees with manifest.json.
-const VERSION = "0.23.0";
-// Papers the pop-up script runs on — the manifest lists them (21 patterns: the
-// Times has two domains). test/verify.mjs holds this number to the manifest.
-const POPUP_SITES = 20;
+const VERSION = "0.23.1";
 
 const $ = (s) => document.querySelector(s);
 const pattern = (domain) => `*://*.${domain}/*`;
@@ -630,7 +627,7 @@ async function readGlobalPrefs() {
   const { globalPrefs } = await chrome.storage.local.get("globalPrefs");
   return {
     mode: "trackers", keepLogins: true, keepConsent: true, autoClear: false, autoKeepLogins: true,
-    autoKeepConsent: true, autoClearStorage: false, hidePopups: false, spared: [], ...(globalPrefs || {}),
+    autoKeepConsent: true, autoClearStorage: false, popupSites: [], spared: [], ...(globalPrefs || {}),
   };
 }
 
@@ -658,6 +655,43 @@ const isTracker = (c) =>
 async function saveGlobalPrefs(patch) {
   const { globalPrefs } = await chrome.storage.local.get("globalPrefs");
   await chrome.storage.local.set({ globalPrefs: { ...(globalPrefs || {}), ...patch } });
+}
+
+/**
+ * Pop-up hiding, per site, in the user's hands.
+ *
+ * A tick asks Chrome for access to that one site (a prompt, unless the
+ * browser-wide grant is already there) and, only if granted, adds the site to
+ * the list the worker registers the script from. A declined prompt unticks
+ * the box — a switch that stays ticked while nothing runs is the defect this
+ * extension exists to be the opposite of. An untick takes the site off the
+ * list, and hands the grant back unless the browser-wide one covers it.
+ */
+function popupPatternsFor(site) {
+  const paper = (self.QFC_RULES.papers || []).find((p) => p.site === site);
+  return [site, ...((paper && paper.also) || [])].map((d) => `*://*.${d}/*`);
+}
+function popupSiteFromInput(text) {
+  const raw = String(text || "").trim().toLowerCase();
+  if (!raw) return null;
+  let host = raw;
+  try { host = new URL(/^[a-z]+:\/\//.test(raw) ? raw : "https://" + raw).hostname; } catch { return null; }
+  if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(host)) return null;
+  return PSL.registrable(host) || null;
+}
+async function togglePopupSite(site, on, box) {
+  const prefs = await readGlobalPrefs();
+  const origins = popupPatternsFor(site);
+  if (on) {
+    let ok = false;
+    try { ok = (await chrome.permissions.contains({ origins })) || (await chrome.permissions.request({ origins })); } catch { /* declined or dismissed */ }
+    if (!ok) { if (box) box.checked = false; return; }
+    if (!prefs.popupSites.includes(site)) await saveGlobalPrefs({ popupSites: [...prefs.popupSites, site] });
+  } else {
+    await saveGlobalPrefs({ popupSites: prefs.popupSites.filter((s) => s !== site) });
+    if (!state.allSites) { try { await chrome.permissions.remove({ origins }); } catch { /* not held separately */ } }
+  }
+  paintAll();
 }
 
 async function scanAll() {
@@ -816,20 +850,28 @@ async function paintAll() {
     On the automatic clear this covers every address of the site the worker has
     seen, not just the one page you had open.</span></span>
   </label>`;
-  // Pop-ups on news sites (popups.js). Off by default: a hiding rule is a
-  // hypothesis about a page until it has been measured hiding the thing, and
-  // a default that is wrong hides part of a page for everyone.
+  // Pop-ups on news sites (popups.js), one tick box per site. Nothing runs
+  // anywhere until a site is ticked: the tick asks Chrome for access to that
+  // site alone, and the worker registers the script there. The user decides
+  // the list, and can add to it; the manifest names no site.
   const popupsLast = popupStats && popupStats.last
-    ? `<br />Last: ${esc(popupStats.last.rule)} on ${esc(popupStats.last.site)}, ${ago(popupStats.last.at)}.`
+    ? ` Last: ${esc(popupStats.last.rule)} on ${esc(popupStats.last.site)}, ${ago(popupStats.last.at)}.`
     : "";
-  const popupsBlock = `<div class="section">Pop-ups</div>
-  <label class="choice">
-    <input type="checkbox" id="hidePopups" ${prefs.hidePopups ? "checked" : ""} />
-    <span><b>Hide pop-ups on UK news sites</b>
-    <span>On ${POPUP_SITES} papers: the "accept cookies?" dialog and the paper's own subscribe and
-    sale pop-ups are hidden, and the page they were holding is unlocked. Nothing is answered
-    for you, and paid articles stay paid. ${plural(popupStats?.hidden || 0, "pop-up", "pop-ups")} hidden so far.${popupsLast}</span></span>
+  const papers = self.QFC_RULES.papers;
+  const ticked = prefs.popupSites;
+  const custom = ticked.filter((site) => !papers.some((p) => p.site === site));
+  const row = (site, name, sub) => `<label class="choice sub">
+    <input type="checkbox" data-popup-site="${esc(site)}" ${ticked.includes(site) ? "checked" : ""} />
+    <span><b>${esc(name)}</b><span>${esc(sub)}</span></span>
   </label>`;
+  const popupsBlock = `<div class="section">Pop-ups on news sites</div>
+  <div class="pad"><p class="lead">Tick a paper and its "accept cookies?" dialog and its own subscribe and sale
+    pop-ups are hidden, and the page they were holding is unlocked. Each tick asks Chrome for
+    access to that one site and nothing else. Nothing is answered for you, and paid articles stay
+    paid. ${plural(popupStats?.hidden || 0, "pop-up", "pop-ups")} hidden so far.${popupsLast}</p></div>
+  ${papers.map((p) => row(p.site, p.name, p.site)).join("")}
+  ${custom.map((site) => row(site, site, "added by you")).join("")}
+  <div class="find"><input id="addPopupSite" type="text" placeholder="Add another site — e.g. example.co.uk" /></div>`;
 
   const rows = !state.expanded ? "" : [...state.allGroups]
     .sort((a, b) => a.site.localeCompare(b.site))
@@ -929,9 +971,14 @@ async function paintAll() {
     await saveGlobalPrefs({ keepConsent: e.target.checked });
     paintAll();
   });
-  $("#hidePopups").addEventListener("change", async (e) => {
-    await saveGlobalPrefs({ hidePopups: e.target.checked });
-    paintAll();
+  $("#main").querySelectorAll("input[data-popup-site]").forEach((box) =>
+    box.addEventListener("change", () => togglePopupSite(box.dataset.popupSite, box.checked, box)),
+  );
+  $("#addPopupSite").addEventListener("keydown", async (e) => {
+    if (e.key !== "Enter") return;
+    const site = popupSiteFromInput(e.target.value);
+    if (!site) { e.target.value = ""; e.target.placeholder = "That is not a site address"; return; }
+    await togglePopupSite(site, true, null);
   });
   $("#keepLogins").addEventListener("change", async (e) => {
     await saveGlobalPrefs({ keepLogins: e.target.checked });

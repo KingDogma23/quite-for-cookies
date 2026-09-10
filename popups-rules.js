@@ -16,9 +16,37 @@
  *
  * popups.css is GENERATED from this file by test/build-popups-css.mjs, so a
  * selector exists in exactly one place; test/verify.mjs fails if the two
- * drift. Loaded by the content script (before popups.js) and by the suite.
+ * drift. Loaded by the content script (before popups.js), by the popup, by
+ * the worker and by the suite.
+ *
+ * `papers` is the list the popup offers as tick boxes. Nothing runs on a
+ * site until the user ticks it: the tick asks Chrome for access to that one
+ * site and the worker registers the script there (background.js). The
+ * manifest names no site at all.
  */
 self.QFC_RULES = {
+  papers: [
+    { name: "The Telegraph", site: "telegraph.co.uk" },
+    { name: "The Independent", site: "independent.co.uk" },
+    { name: "The Sun", site: "thesun.co.uk" },
+    { name: "The Times", site: "thetimes.com", also: ["thetimes.co.uk"] },
+    { name: "The Standard", site: "standard.co.uk" },
+    { name: "The Scotsman", site: "scotsman.com" },
+    { name: "The Herald", site: "heraldscotland.com" },
+    { name: "The Mirror", site: "mirror.co.uk" },
+    { name: "Daily Express", site: "express.co.uk" },
+    { name: "Manchester Evening News", site: "manchestereveningnews.co.uk" },
+    { name: "Liverpool Echo", site: "liverpoolecho.co.uk" },
+    { name: "Birmingham Mail", site: "birminghammail.co.uk" },
+    { name: "Daily Record", site: "dailyrecord.co.uk" },
+    { name: "WalesOnline", site: "walesonline.co.uk" },
+    { name: "Belfast Telegraph", site: "belfasttelegraph.co.uk" },
+    { name: "Financial Times", site: "ft.com" },
+    { name: "Daily Mail", site: "dailymail.co.uk" },
+    { name: "Metro", site: "metro.co.uk" },
+    { name: "The i Paper", site: "inews.co.uk" },
+    { name: "The Guardian", site: "theguardian.com" },
+  ],
   platforms: [
     {
       name: "Sourcepoint consent",
