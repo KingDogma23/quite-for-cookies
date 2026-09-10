@@ -21,7 +21,10 @@
 // version of the LOADED extension rather than of the code running, so after a
 // reload an old popup would report the new version. package.sh refuses to build
 // if this disagrees with manifest.json.
-const VERSION = "0.22.10";
+const VERSION = "0.23.0";
+// Papers the pop-up script runs on — the manifest lists them (21 patterns: the
+// Times has two domains). test/verify.mjs holds this number to the manifest.
+const POPUP_SITES = 20;
 
 const $ = (s) => document.querySelector(s);
 const pattern = (domain) => `*://*.${domain}/*`;
@@ -131,6 +134,7 @@ async function readUi() {
 
 async function paintStats(stats) {
   const s = stats || (await readStats());
+  const { popupStats } = await chrome.storage.local.get("popupStats");
   const n = (v) => v.toLocaleString();
   $("#stats").hidden = false;
   $("#stats").innerHTML = `<div class="statlabel">ALL TIME, EVERY SITE</div>
@@ -138,6 +142,7 @@ async function paintStats(stats) {
       <div><b>${n(s.cookies)}</b><span>Cookies removed</span></div>
       <div><b>${n(s.items)}</b><span>Data items cleared</span></div>
       <div><b>${n(s.sites.length)}</b><span>Sites cleaned</span></div>
+      <div><b>${n(popupStats?.hidden || 0)}</b><span>Pop-ups hidden</span></div>
     </div>
     <a class="coffee" href="https://buymeacoffee.com/kingdogma23" target="_blank" rel="noopener">Free, and staying that way — buy me a coffee</a>`;
 }
@@ -625,7 +630,7 @@ async function readGlobalPrefs() {
   const { globalPrefs } = await chrome.storage.local.get("globalPrefs");
   return {
     mode: "trackers", keepLogins: true, keepConsent: true, autoClear: false, autoKeepLogins: true,
-    autoKeepConsent: true, autoClearStorage: false, spared: [], ...(globalPrefs || {}),
+    autoKeepConsent: true, autoClearStorage: false, hidePopups: false, spared: [], ...(globalPrefs || {}),
   };
 }
 
@@ -745,6 +750,7 @@ function targetsFor(prefs) {
 
 async function paintAll() {
   const prefs = await readGlobalPrefs();
+  const { popupStats } = await chrome.storage.local.get("popupStats");
   const totalCookies = state.allGroups.reduce((n, g) => n + g.cookies.length, 0);
   // Must be the same predicate as targetsFor(), or the preview promises one
   // thing and the sweep does another — which is the whole product.
@@ -810,6 +816,20 @@ async function paintAll() {
     On the automatic clear this covers every address of the site the worker has
     seen, not just the one page you had open.</span></span>
   </label>`;
+  // Pop-ups on news sites (popups.js). Off by default: a hiding rule is a
+  // hypothesis about a page until it has been measured hiding the thing, and
+  // a default that is wrong hides part of a page for everyone.
+  const popupsLast = popupStats && popupStats.last
+    ? `<br />Last: ${esc(popupStats.last.rule)} on ${esc(popupStats.last.site)}, ${ago(popupStats.last.at)}.`
+    : "";
+  const popupsBlock = `<div class="section">Pop-ups</div>
+  <label class="choice">
+    <input type="checkbox" id="hidePopups" ${prefs.hidePopups ? "checked" : ""} />
+    <span><b>Hide pop-ups on UK news sites</b>
+    <span>On ${POPUP_SITES} papers: the "accept cookies?" dialog and the paper's own subscribe and
+    sale pop-ups are hidden, and the page they were holding is unlocked. Nothing is answered
+    for you, and paid articles stay paid. ${plural(popupStats?.hidden || 0, "pop-up", "pop-ups")} hidden so far.${popupsLast}</span></span>
+  </label>`;
 
   const rows = !state.expanded ? "" : [...state.allGroups]
     .sort((a, b) => a.site.localeCompare(b.site))
@@ -863,6 +883,7 @@ async function paintAll() {
        outside cookies will still ask.</span></span>
      </label>
      ${autoRow}
+     ${popupsBlock}
      ${logBlock}
      <div class="section">Sites</div>
      ${state.expanded ? `<div class="find"><input id="find" type="search" placeholder="Find a site — type part of its name" /></div>${rows}<div class="nohits" id="nohits" hidden>No site matches that.</div>` : `<div class="pad"><p class="lead">${plural(state.allGroups.length, "site", "sites")} found. ${
@@ -906,6 +927,10 @@ async function paintAll() {
   });
   $("#keepConsent").addEventListener("change", async (e) => {
     await saveGlobalPrefs({ keepConsent: e.target.checked });
+    paintAll();
+  });
+  $("#hidePopups").addEventListener("change", async (e) => {
+    await saveGlobalPrefs({ hidePopups: e.target.checked });
     paintAll();
   });
   $("#keepLogins").addEventListener("change", async (e) => {

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Quite for Cookies \u2014 delete cookies and site data, or clear on tab close",
+  "name": "Quite for Cookies — delete cookies and site data, or clear on tab close",
   "short_name": "Quite for Cookies",
-  "version": "0.22.10",
+  "version": "0.23.0",
   "description": "Cookie cleaner that shows you what it will delete, then checks it went. Auto-delete cookies on tab close, with a whitelist.",
   "permissions": [
     "activeTab",
@@ -30,5 +30,40 @@
   },
   "background": {
     "service_worker": "background.js"
-  }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.telegraph.co.uk/*",
+        "*://*.independent.co.uk/*",
+        "*://*.thesun.co.uk/*",
+        "*://*.thetimes.com/*",
+        "*://*.thetimes.co.uk/*",
+        "*://*.standard.co.uk/*",
+        "*://*.scotsman.com/*",
+        "*://*.heraldscotland.com/*",
+        "*://*.mirror.co.uk/*",
+        "*://*.express.co.uk/*",
+        "*://*.manchestereveningnews.co.uk/*",
+        "*://*.liverpoolecho.co.uk/*",
+        "*://*.birminghammail.co.uk/*",
+        "*://*.dailyrecord.co.uk/*",
+        "*://*.walesonline.co.uk/*",
+        "*://*.belfasttelegraph.co.uk/*",
+        "*://*.ft.com/*",
+        "*://*.dailymail.co.uk/*",
+        "*://*.metro.co.uk/*",
+        "*://*.inews.co.uk/*",
+        "*://*.theguardian.com/*"
+      ],
+      "js": [
+        "popups-rules.js",
+        "popups.js"
+      ],
+      "css": [
+        "popups.css"
+      ],
+      "run_at": "document_start"
+    }
+  ]
 }

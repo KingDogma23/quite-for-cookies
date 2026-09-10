@@ -208,3 +208,18 @@ that keep a session in local storage will sign you out with it.
   (Sourcepoint) and walesonline.co.uk (Quantcast) read "consent survived,
   control gone" on both — the sweep ran and spared the consent name. Measured,
   not assumed; ready to upload.
+
+## 0.23.0 — what changed for the next upload
+
+- **Hides pop-ups on twenty UK newspaper sites** (new option, off by default).
+  Consent dialogs by platform (Sourcepoint, Quantcast, Didomi) and each
+  paper's own subscribe and sale pop-ups (Telegraph's sale spotlight, FT's
+  marketing prompt, the Mail's consent-or-pay overlay so far), by measured
+  selector, never by heuristic; the page they were holding is unlocked. The
+  popup counts every pop-up hidden and names the last one.
+- **New host access at install**: a content script on the twenty papers
+  (21 match patterns — the Times has two domains). Justification for the
+  store's permission form: "Runs only on the listed UK newspaper sites to hide
+  their consent and subscription pop-ups, an option the user turns on. Reads
+  nothing from the page; hides named containers and counts them."
+- Nothing is answered on the user's behalf; paid articles stay paid.

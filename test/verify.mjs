@@ -205,7 +205,12 @@ check('CONTROL: sabotaging the suffix list changes the answer — so these check
         armText: (document.getElementById('arm')||{}).textContent || '',
         styled: brand ? getComputedStyle(brand).display : 'none',
       });})()` });
-    ws.close(); fetch(`http://127.0.0.1:${CDP}/json/close/${t.id}`);
+    ws.close();
+    // Awaited, and its rejection swallowed: this used to be fire-and-forget,
+    // and once anything after the harness yielded to the event loop, the
+    // close racing chrome.kill() surfaced as an unhandled ECONNREFUSED that
+    // crashed the suite with no summary line. Found 2026-09-10.
+    await fetch(`http://127.0.0.1:${CDP}/json/close/${t.id}`).catch(() => {});
     return { ...JSON.parse(r.result.result.value), errs };
   }
 
@@ -230,6 +235,61 @@ check('CONTROL: sabotaging the suffix list changes the answer — so these check
 
   chrome.kill(); server.close();
   try { fs.rmSync(TMP, { recursive: true, force: true }); } catch { /* OS will */ }
+}
+
+// ---- pop-ups on news sites (0.23.0) ----------------------------------------
+// The rules are data; these checks hold the data, the generated stylesheet,
+// the content script's instrument and the popup's option to each other.
+{
+  const rulesSrc = fs.readFileSync(path.join(EXT, 'popups-rules.js'), 'utf8');
+  const loadRules = (src) => { const ctx = { self: {} }; vm.createContext(ctx); vm.runInContext(src, ctx); return ctx.self.QFC_RULES; };
+  const R = loadRules(rulesSrc);
+  const all = [...R.platforms, ...Object.values(R.sites).flat()];
+  const balanced = (sel) => { let d = 0; for (const ch of sel) { if (ch === '[' || ch === '(') d++; if (ch === ']' || ch === ')') d--; if (d < 0) return false; } return d === 0 && (sel.match(/"/g) || []).length % 2 === 0; };
+  check('popups: every rule has a name, selectors that parse, and a measurement beside it',
+        all.length > 0 && all.every((r) => r.name && Array.isArray(r.hide) && r.hide.length && r.hide.every((h) => h.trim() && balanced(h)) && typeof r.measured === 'string' && /20\d\d-\d\d-\d\d/.test(r.measured)),
+        `${all.length} rules, ${all.flatMap((r) => r.hide).length} selectors`);
+  const manifest = JSON.parse(fs.readFileSync(path.join(EXT, 'manifest.json'), 'utf8'));
+  const cs = (manifest.content_scripts || [])[0] || {};
+  check('popups: the content script loads the rules before the logic, with the stylesheet, at document_start',
+        JSON.stringify(cs.js) === JSON.stringify(['popups-rules.js', 'popups.js']) && JSON.stringify(cs.css) === JSON.stringify(['popups.css']) && cs.run_at === 'document_start',
+        JSON.stringify({ js: cs.js, css: cs.css, run_at: cs.run_at }));
+  const papers = new Set((cs.matches || []).map((m) => m.replace(/^\*:\/\/\*\./, '').replace(/\/\*$/, '')).map((d) => (d === 'thetimes.co.uk' ? 'thetimes.com' : d)));
+  const pjsRaw = fs.readFileSync(path.join(EXT, 'popup.js'), 'utf8');
+  const sitesConst = Number((pjsRaw.match(/const POPUP_SITES = (\d+);/) || [])[1]);
+  check('popups: the popup says how many papers, and it is the manifest\'s number', papers.size === sitesConst && sitesConst > 0, `${papers.size} papers in the manifest, popup says ${sitesConst}`);
+  check('popups: every site with its own rules is one the script runs on',
+        Object.keys(R.sites).every((k) => (cs.matches || []).includes(`*://*.${k}/*`)), Object.keys(R.sites).join(', '));
+  const { buildPopupsCss } = await import('./build-popups-css.mjs');
+  const css = fs.readFileSync(path.join(EXT, 'popups.css'), 'utf8');
+  check('popups: popups.css is generated from the rules and matches them', css === buildPopupsCss(rulesSrc), 'node test/build-popups-css.mjs regenerates it');
+  check('popups: the pre-stamp hiding never uses display, so the site\'s value stays readable',
+        !/html\[data-qfc-on\] [^{]*\{[^}]*display/.test(css.split('[data-qfc-hidden]')[0]), 'visibility/opacity/pointer-events only');
+  const strip = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  const js = strip(fs.readFileSync(path.join(EXT, 'popups.js'), 'utf8'));
+  const reads = (js.match(/qfcoff=1/g) || []).length;
+  check('popups: the bypass switch is read exactly once, into a const', reads === 1 && /const BYPASSED = location\.search\.indexOf\("qfcoff=1"\)/.test(js), `${reads} read(s)`);
+  check('popups: the version is a literal equal to the manifest', js.includes(`const VERSION = "${manifest.version}";`), manifest.version);
+  check('popups: the counter is stamped 0 before anything can increment it', js.includes('set("popups", 0)') && js.indexOf('set("popups", 0)') < js.indexOf('count += 1'), 'data-qfc-popups starts at "0"');
+  check('popups: a reading carries the tab visibility and the bypass', /visibilityState/.test(js) && js.includes('"tabhidden"') && js.includes('"bypassed"'), 'data-qfc-tabhidden, data-qfc-bypassed');
+  check('popups: an element is counted only if the site rendered it', /rendered\(el\)/.test(js) && /r\.width > 0 && r\.height > 0/.test(js), 'zero-size boxes are not pop-ups');
+  const pjs = strip(pjsRaw);
+  check('popups: the option is in the popup, saved under the one key the content script reads',
+        pjs.includes('hidePopups: false') && pjs.includes('id="hidePopups"') && pjs.includes('saveGlobalPrefs({ hidePopups:') && js.includes('prefs.hidePopups'), 'globalPrefs.hidePopups');
+  check('popups: the popup shows the count and the last one hidden', pjs.includes('Pop-ups hidden') && pjs.includes('popupStats.last'), 'stats tile + Last line');
+
+  // CONTROLS. Each asserts its copy changed — a control whose target text was
+  // not there to replace passed on an unchanged file twice in the YouTube suite.
+  // Renaming the key empties every rule's selectors without parsing the arrays
+  // (a bracket-matching regex stopped at the ']' inside an attribute selector).
+  const noSel = rulesSrc.replace(/\bhide:/g, 'hide: [], hide_off:');
+  if (noSel === rulesSrc) throw new Error('control: the rules copy did not change');
+  const R2 = loadRules(noSel); const all2 = [...R2.platforms, ...Object.values(R2.sites).flat()];
+  check('CONTROL: rules stripped of their selectors FAIL the rule check — it can fail', !all2.every((r) => r.hide.length), `${all2.filter((r) => !r.hide.length).length} rules empty`);
+  check('CONTROL: a rules file that differs no longer matches popups.css — it can fail', buildPopupsCss(noSel) !== css, 'generated css differs');
+  const twoReads = js.replace('if (BYPASSED) return;', 'if (BYPASSED || location.search.indexOf("qfcoff=1") !== -1) return;');
+  if (twoReads === js) throw new Error('control: the script copy did not change');
+  check('CONTROL: a second read of the bypass switch FAILS the once-only check — it can fail', (twoReads.match(/qfcoff=1/g) || []).length !== 1, 'two reads');
 }
 
 let bad = 0;

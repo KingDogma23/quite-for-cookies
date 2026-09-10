@@ -1,0 +1,36 @@
+/* GENERATED from popups-rules.js by test/build-popups-css.mjs — do not edit by hand. */
+
+/* Invisible by selector first, so a pop-up never flashes before popups.js
+   sees it. Visibility and opacity, NOT display: the site's own display value
+   must stay readable, because an element is counted only if the site was
+   rendering it. */
+html[data-qfc-on] [id^="sp_message_container_"],
+html[data-qfc-on] #qc-cmp2-container,
+html[data-qfc-on] #qc-cmp2-main,
+html[data-qfc-on] #qc-cmp2-ui,
+html[data-qfc-on] #didomi-popup,
+html[data-qfc-on] .o-banner--exponea-marketing-popup-prompt,
+html[data-qfc-on] div[class*="overlay_"][class*="fullHeight_"],
+html[data-qfc-on] div[class*="overlay_"][class*="fullHeight_"],
+html[data-qfc-on] div[class*="overlay_"][class*="fullHeight_"],
+html[data-qfc-on] #spotlight-modal,
+html[data-qfc-on] #martech-spotlight-scrim {
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* Stamped by popups.js once it has counted the element. Gated on the option,
+   so switching it off puts the page back. */
+html[data-qfc-on] [data-qfc-hidden] {
+  display: none !important;
+}
+
+/* The scroll lock a dialog leaves behind — Sourcepoint sets an inline
+   overflow:hidden on body, Didomi a class that does the same. !important in
+   a stylesheet beats an inline declaration that is not. Held only while a
+   pop-up this extension hid is still in the document. */
+html[data-qfc-on][data-qfc-unlock],
+html[data-qfc-on][data-qfc-unlock] body {
+  overflow: visible !important;
+}
