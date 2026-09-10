@@ -204,5 +204,7 @@ that keep a session in local storage will sign you out with it.
 - Live reading, 2026-09-10, before the worker was reloaded: the running sweep
   removed a cookie under a recognised consent name on independent.co.uk and
   telegraph.co.uk (`test/live-probe.md`) — the fault, reproduced on the real
-  path with controls. The after-reload arm must read "consent survived,
-  control gone" before this version is uploaded.
+  path with controls. After the reload, the same probe on telegraph.co.uk
+  (Sourcepoint) and walesonline.co.uk (Quantcast) read "consent survived,
+  control gone" on both — the sweep ran and spared the consent name. Measured,
+  not assumed; ready to upload.

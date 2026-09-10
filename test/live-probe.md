@@ -59,6 +59,15 @@ they agree, before one they need not):
     independent.co.uk   last tab closed, 2nd try   both survived   VOID — a tab
                         left outside the scripted group was still on the site
 
-That is the fault 0.22.9 fixes, reproduced through the real path. The 0.22.10
-arm is the same procedure after a Reload, and must read: consent SURVIVED,
-control gone.
+That is the fault 0.22.9 fixes, reproduced through the real path.
+
+Same day, after the Reload (worker on 0.22.10), same procedure:
+
+    telegraph.co.uk     Sourcepoint   last tab closed   consent SURVIVED, control GONE
+    walesonline.co.uk   Quantcast     last tab closed   consent SURVIVED, control GONE
+
+The control probe going proves the sweep ran; the consent probe staying proves
+the name was spared. Two sites, two consent platforms, both the required
+reading. The site's own `_sp_su` and `usprivacy` were present afterwards as
+well, but being constants they would have been whether spared or re-created,
+which is why they are not the witness.

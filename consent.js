@@ -41,8 +41,10 @@
  * under a recognised consent name along with a control cookie — the fault
  * this file exists to stop, seen through the tab-close sweep itself. Two
  * controls held: both probes survive two reloads, and both survive a close
- * while the site is open in another tab. The after-Reload reading must be
- * "consent survived, control gone".
+ * while the site is open in another tab. After the Reload, the same
+ * procedure on telegraph.co.uk (Sourcepoint) and walesonline.co.uk
+ * (Quantcast) read "consent survived, control gone" on both: the sweep ran,
+ * and the recognised name was spared.
  *
  * The rest of the field is the well-known consent platforms: IAB TCF
  * (euconsent-v2, addtl_consent), OneTrust, Sourcepoint, Didomi, Cookiebot,
