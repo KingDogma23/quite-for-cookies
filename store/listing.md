@@ -209,7 +209,7 @@ that keep a session in local storage will sign you out with it.
   control gone" on both — the sweep ran and spared the consent name. Measured,
   not assumed; ready to upload.
 
-## 0.23.1 — what changed for the next upload
+## 0.23.2 — what changed for the next upload
 
 - **Hides pop-ups on UK news sites, one paper at a time.** Twenty papers are
   offered as tick boxes in the popup, and any site can be added. Consent
@@ -222,3 +222,8 @@ that keep a session in local storage will sign you out with it.
   the worker registers the script there; an untick unregisters it. The
   manifest names no site. Nothing changes on the store's permission form.
 - Nothing is answered on the user's behalf; paid articles stay paid.
+- 0.23.2: the worker injects the script straight into a ticked site's tab as
+  it loads, because a script REGISTERED against a host granted at runtime does
+  not reliably fire (measured 2026-09-10: registered and permitted, yet no
+  stamps on the page). Registration is kept; the content script no-ops a
+  second injection so the two never double-count.

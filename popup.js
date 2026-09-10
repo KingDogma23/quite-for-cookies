@@ -21,7 +21,7 @@
 // version of the LOADED extension rather than of the code running, so after a
 // reload an old popup would report the new version. package.sh refuses to build
 // if this disagrees with manifest.json.
-const VERSION = "0.23.1";
+const VERSION = "0.23.2";
 
 const $ = (s) => document.querySelector(s);
 const pattern = (domain) => `*://*.${domain}/*`;

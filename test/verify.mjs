@@ -261,6 +261,9 @@ check('CONTROL: sabotaging the suffix list changes the answer — so these check
   check('popups: the worker registers the script per ticked site, at document_start, only where access is held',
         /registerContentScripts\(/.test(bgRaw) && /unregisterContentScripts\(/.test(bgRaw) && /permissions\.contains\(\{ origins: popupPatternsFor\(site\) \}\)/.test(bgRaw) && /runAt: "document_start"/.test(bgRaw) && bgRaw.includes('js: POPUP_FILES.js, css: POPUP_FILES.css') && bgRaw.includes('js: ["popups-rules.js", "popups.js"], css: ["popups.css"]'),
         'chrome.scripting.registerContentScripts from globalPrefs.popupSites');
+  check('popups: the worker injects on tab load for ticked+granted sites, probe-guarded, because registration alone does not fire on a runtime grant',
+        /chrome\.tabs\.onUpdated\.addListener/.test(bgRaw) && /injectPopups\(tabId, tab\.url\)/.test(bgRaw) && /executeScript\(\{[\s\S]*?func: \(\) => document\.documentElement\.getAttribute\("data-qfc-version"\)/.test(bgRaw) && /insertCSS\(\{ target: \{ tabId \}, files: POPUP_FILES\.css \}\)/.test(bgRaw) && /permissions\.contains\(\{ origins: popupPatternsFor\(wantedSite\) \}\)/.test(bgRaw),
+        'tabs.onUpdated -> injectPopups with a data-qfc-version probe');
   check('popups: the worker re-syncs on install, startup, access changes and list changes',
         ['onInstalled', 'onStartup', 'permissions.onAdded', 'permissions.onRemoved'].every((h) => new RegExp(h.replace('.', '\\.') + '\\.addListener\\(\\(\\) => syncPopupScripts').test(bgRaw)) && /if \(before !== after\) syncPopupScripts\("sites changed"\)/.test(bgRaw), 'four triggers plus the list');
   check('popups: a tick asks for access to that site alone, and a declined prompt unticks the box',
@@ -278,6 +281,9 @@ check('CONTROL: sabotaging the suffix list changes the answer — so these check
   check('popups: the stamps are remembered and re-asserted when the page strips them',
         js.includes('const reassert = () =>') && js.includes('new MutationObserver(reassert).observe(html, { attributes: true })') && js.indexOf('reassert();') > js.indexOf('const sweep = () => {'),
         'Next.js hydration on mirror.co.uk removed every early stamp');
+  check('popups: the script no-ops a second injection into the same page',
+        /if \(window\.__qfcRan\) return;/.test(js) && js.indexOf('window.__qfcRan = true;') < js.indexOf('const VERSION'),
+        'window.__qfcRan guard runs before anything else — the script reaches a page two ways');
   check('popups: the version is a literal equal to the manifest', js.includes(`const VERSION = "${manifest.version}";`), manifest.version);
   check('popups: the counter is stamped 0 before anything can increment it', js.includes('set("popups", 0)') && js.indexOf('set("popups", 0)') < js.indexOf('count += 1'), 'data-qfc-popups starts at "0"');
   check('popups: a reading carries the tab visibility and the bypass', /visibilityState/.test(js) && js.includes('"tabhidden"') && js.includes('"bypassed"'), 'data-qfc-tabhidden, data-qfc-bypassed');

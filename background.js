@@ -369,3 +369,46 @@ chrome.storage.onChanged.addListener((changes, area) => {
   const after = JSON.stringify(((changes.globalPrefs.newValue || {}).popupSites) || []);
   if (before !== after) syncPopupScripts("sites changed");
 });
+
+/**
+ * Inject the pop-up script straight into a tab as it loads.
+ *
+ * Measured 2026-09-10, and the reason this exists: with the seven sites
+ * ticked and access granted, chrome.scripting.registerContentScripts reported
+ * success and chrome.permissions.contains returned true, yet a freshly loaded
+ * independent.co.uk carried no data-qfc-* stamps — the registered script
+ * never ran. The same code, same rules, injected on every site the moment the
+ * host was in the MANIFEST instead of granted at runtime through the tick. A
+ * script registered against a runtime-granted optional host does not reliably
+ * inject; a direct executeScript into the tab does, so the tick's grant is
+ * used the way it actually works. Registration is kept as well: whichever
+ * arrives first wins, and popups.js no-ops the loser.
+ */
+async function injectPopups(tabId, url) {
+  const site = siteOf(url);
+  if (!site) return;
+  const paper = (self.QFC_RULES.papers || []).find((p) => p.site === site || (p.also || []).includes(site));
+  const wantedSite = paper ? paper.site : site;
+  const { globalPrefs } = await chrome.storage.local.get("globalPrefs");
+  if (!((globalPrefs && globalPrefs.popupSites) || []).includes(wantedSite)) return;
+  // Never assumed: the grant can be absent (never given, or taken back in
+  // Chrome's own settings) while the site is still on the ticked list.
+  if (!(await chrome.permissions.contains({ origins: popupPatternsFor(wantedSite) }))) return;
+  try {
+    // Already there? The registered script may have won the race, or a soft
+    // navigation may re-fire this. One probe, and no second run either way.
+    const [probe] = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => document.documentElement.getAttribute("data-qfc-version") || window.__qfcRan === true,
+    });
+    if (probe && probe.result) return;
+    await chrome.scripting.insertCSS({ target: { tabId }, files: POPUP_FILES.css });
+    await chrome.scripting.executeScript({ target: { tabId }, files: POPUP_FILES.js });
+  } catch {
+    // The tab navigated away, or is a page we cannot touch. Not an outcome
+    // worth a log line on every stray update; the counter is the real signal.
+  }
+}
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.status === "loading" && tab && tab.url) injectPopups(tabId, tab.url);
+});

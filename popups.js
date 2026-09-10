@@ -45,7 +45,16 @@
  */
 (() => {
   "use strict";
-  const VERSION = "0.23.1";
+  // Idempotent by construction. This file reaches a page two ways — the
+  // worker's registered content script AND a direct injection the worker
+  // does on tab updates (background.js) — because a script REGISTERED against
+  // a host granted at runtime through the popup's tick does not reliably
+  // inject, while a direct injection into the tab does. Whichever arrives
+  // first wins; the second no-ops here rather than starting a second observer
+  // and double-counting.
+  if (window.__qfcRan) return;
+  window.__qfcRan = true;
+  const VERSION = "0.23.2";
   const html = document.documentElement;
   const stamps = {};
   const set = (k, v) => { stamps[k] = String(v); html.setAttribute("data-qfc-" + k, stamps[k]); };
