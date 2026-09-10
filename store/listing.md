@@ -184,7 +184,7 @@ therefore offered as a separate option, defaulting to off, with both consequence
 stated where it is turned on — trackers restore themselves without it, and sites
 that keep a session in local storage will sign you out with it.
 
-## 0.22.9 — what changed for the next upload
+## 0.22.9 / 0.22.10 — what changed for the next upload
 
 - **Keeps cookie-consent answers by default** (new option, on for both the
   tab-close sweep and the manual clear, untick to remove them). Clearing a site's
@@ -194,3 +194,10 @@ that keep a session in local storage will sign you out with it.
   after-the-fact re-count. Sites that keep the answer in localStorage
   (Sourcepoint, Quantcast — measured) will still ask; the option says so.
 - No new permissions.
+- 0.22.10: checked against twenty UK newspaper sites (read-only, nothing
+  clicked). Sourcepoint x7, Quantcast x7, Didomi, FT's own, DMG's own x3,
+  Guardian. Five cookie names added from that pass (FTConsent,
+  FTCookieConsentGDPR, didomi_dcs, _sp_legitimate_interests, prev-tcf-v2).
+  Where the answer lives: DMG (Mail, Metro, inews) and the Guardian keep it in
+  localStorage only, so they are untouched by a cookie-only clear and will ask
+  again only if "Also clear stored site data" is on.

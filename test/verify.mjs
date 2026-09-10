@@ -93,10 +93,16 @@ const consent = loadConsent();
 // Observed on real sites 2026-09-03, plus the well-known consent platforms.
 const CONSENT_NAMES = ['ckns_policy', 'ckns_explicit', 'OptanonConsent', 'OptanonAlertBoxClosed',
   'gdpr', '_sp_su', 'consentUUID', 'usprivacy', 'euconsent-v2', 'addtl_consent',
-  'didomi_token', 'CookieConsent', 'cookieconsent_status', 'cmapi_cookie_privacy'];
+  'didomi_token', 'CookieConsent', 'cookieconsent_status', 'cmapi_cookie_privacy',
+  // twenty UK newspaper sites, 2026-09-10
+  'FTConsent', 'FTCookieConsentGDPR', 'didomi_dcs', '_sp_legitimate_interests', 'prev-tcf-v2',
+  '_sp_enable_dfp_personalized_ads'];
 // Names a clear MUST still remove: analytics ids, ad ids, sessions, csrf.
 const NOT_CONSENT = ['_ga', '_gid', '_gat', '_fbp', 'IDE', 'id5id', 'permutive-id', 'sessionid',
-  'csrftoken', '_pk_id.1.abcd', 'ajs_anonymous_id', 'mp_123_mixpanel', 'test_cookie', '__cf_bm'];
+  'csrftoken', '_pk_id.1.abcd', 'ajs_anonymous_id', 'mp_123_mixpanel', 'test_cookie', '__cf_bm',
+  // seen on the newspaper sites: Snowplow analytics ids that share the _sp_ prefix, and an
+  // integration flag. A prefix match would spare tracking under the label "consent".
+  '_sp_ses.5e5e', '_sp_id.5e5e', '_nuk_sp_ses.9caf', '_nuk_sp_id.9caf', '_sp_facebook'];
 const missed = CONSENT_NAMES.filter((n) => !consent.looksLikeConsent({ name: n }));
 const overMatched = NOT_CONSENT.filter((n) => consent.looksLikeConsent({ name: n }));
 check('consent: every observed consent cookie name is recognised', missed.length === 0,

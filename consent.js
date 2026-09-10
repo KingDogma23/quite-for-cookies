@@ -17,6 +17,24 @@
  *   telegraph.co.uk     _sp_su
  *   mirror.co.uk        usprivacy (Quantcast's cookie half)
  *
+ * And twenty UK newspaper sites on 2026-09-10 — the ones that ask most:
+ *
+ *   Sourcepoint  Independent, Telegraph, Sun, Times, Standard, Scotsman,
+ *                Herald         _sp_su; Herald also _sp_enable_dfp_personalized_ads,
+ *                               _sp_legitimate_interests, prev-tcf-v2
+ *   Quantcast    Mirror, Express, Manchester Evening News, Liverpool Echo,
+ *                Birmingham Mail, Daily Record, WalesOnline      usprivacy
+ *   Didomi       Belfast Telegraph                               didomi_dcs
+ *   FT's own     ft.com                        FTConsent, FTCookieConsentGDPR
+ *   DMG's own    Daily Mail, Metro, inews      NO cookie — dmg.cmp.uuid in
+ *                                               localStorage only
+ *   Guardian     no readable consent cookie; the answer is in localStorage
+ *
+ * Refused, correctly, on the same sites: _sp_ses.* / _sp_id.* and
+ * _nuk_sp_ses.* / _nuk_sp_id.* are Snowplow analytics ids that merely share
+ * the _sp_ prefix, and _sp_facebook is an integration flag. A prefix match
+ * would have spared tracking under the label "consent". These are anchored.
+ *
  * The rest of the field is the well-known consent platforms: IAB TCF
  * (euconsent-v2, addtl_consent), OneTrust, Sourcepoint, Didomi, Cookiebot,
  * TrustArc, CookieYes, CookieScript, Osano.
@@ -37,7 +55,9 @@ self.CONSENT_RE = new RegExp(
       "euconsent(-v2)?", "addtl_consent", "usprivacy", "gdpr(_consent)?",
       "OptanonConsent", "OptanonAlertBoxClosed", "OptanonChoice",
       "consentUUID", "consentDate", "_sp_su", "_sp_v1_[a-z_]+", "_sp_enable_dfp_personalized_ads",
-      "didomi_token", "CookieConsent", "cookieconsent_status", "cookie_consent(_user_accepted)?",
+      "_sp_legitimate_interests", "prev-tcf-v2",
+      "didomi_token", "didomi_dcs", "CookieConsent", "cookieconsent_status", "cookie_consent(_user_accepted)?",
+      "FTConsent", "FTCookieConsentGDPR",
       "cmapi_cookie_privacy", "notice_preferences", "notice_gdpr_prefs", "TAconsentID",
       "cookieyes-consent", "cky-consent", "CookieScriptConsent", "cc_cookie", "osano_consentmanager",
       "ckns_policy", "ckns_explicit", "ckns_privacy",
