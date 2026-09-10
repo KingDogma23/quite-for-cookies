@@ -14,6 +14,9 @@
  *   data-qfc-version    the literal below — not the manifest's, which would
  *                       report the LOADED build, not the running one
  *   data-qfc-bypassed   1 when the URL carried ?qfcoff=1, decided once
+ *   data-qfc-forced     1 when the URL carried ?qfcon=1 — the option is on
+ *                       for this load whatever is saved, so an arm can be
+ *                       run without touching the user's setting
  *   data-qfc-on         present only while the option is on and not bypassed
  *   data-qfc-tabhidden  document.visibilityState, kept current; a hidden
  *                       tab's reading is void
@@ -45,9 +48,11 @@
   // on after the first soft navigation in the YouTube extension while the
   // page still reported itself bypassed; the control was measuring itself.
   const BYPASSED = location.search.indexOf("qfcoff=1") !== -1;
+  const FORCED = location.search.indexOf("qfcon=1") !== -1;
 
   set("version", VERSION);
   set("bypassed", BYPASSED ? 1 : 0);
+  set("forced", FORCED ? 1 : 0);
   set("popups", 0);
   const tabHidden = () => set("tabhidden", document.visibilityState === "hidden" ? 1 : 0);
   tabHidden();
@@ -127,7 +132,7 @@
   };
 
   const applyPrefs = (prefs) => {
-    enabled = !!(prefs && prefs.hidePopups);
+    enabled = FORCED || !!(prefs && prefs.hidePopups);
     if (enabled) { set("on", 1); schedule(); }
     else { unset("on"); unset("unlock"); }
   };

@@ -269,6 +269,8 @@ check('CONTROL: sabotaging the suffix list changes the answer — so these check
   const js = strip(fs.readFileSync(path.join(EXT, 'popups.js'), 'utf8'));
   const reads = (js.match(/qfcoff=1/g) || []).length;
   check('popups: the bypass switch is read exactly once, into a const', reads === 1 && /const BYPASSED = location\.search\.indexOf\("qfcoff=1"\)/.test(js), `${reads} read(s)`);
+  const forces = (js.match(/qfcon=1/g) || []).length;
+  check('popups: the force-on switch is read exactly once too, and only widens enabled', forces === 1 && /const FORCED = location\.search\.indexOf\("qfcon=1"\)/.test(js) && js.includes('enabled = FORCED ||'), `${forces} read(s)`);
   check('popups: the version is a literal equal to the manifest', js.includes(`const VERSION = "${manifest.version}";`), manifest.version);
   check('popups: the counter is stamped 0 before anything can increment it', js.includes('set("popups", 0)') && js.indexOf('set("popups", 0)') < js.indexOf('count += 1'), 'data-qfc-popups starts at "0"');
   check('popups: a reading carries the tab visibility and the bypass', /visibilityState/.test(js) && js.includes('"tabhidden"') && js.includes('"bypassed"'), 'data-qfc-tabhidden, data-qfc-bypassed');
