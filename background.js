@@ -296,13 +296,15 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
 
   await chrome.storage.local.set({
     stats: next,
-    lastAuto: { site, removed, kept: keptNow, lostSignIns, at: Date.now() },
+    lastAuto: { site, removed, kept: keptNow, lostSignIns, keptConsent: keptConsentNow, lostConsent, at: Date.now() },
   });
   note(
     `${site}: removed ${removed} of ${before.length}, kept ${keptNow}` +
       // Loud, because it means the guard did not hold: a cookie the sweep was
       // told to spare is gone, and nobody was watching when it happened.
       (lostSignIns ? ` — ${lostSignIns} SIGN-IN(S) DID NOT SURVIVE` : "") +
+      (keptConsentNow ? `, ${keptConsentNow} consent answer(s) kept` : "") +
+      (lostConsent ? ` — ${lostConsent} CONSENT ANSWER(S) DID NOT SURVIVE` : "") +
       (prefs.autoClearStorage ? `, site data clear requested for ${storageRequested} origin(s)` : ""),
   );
 });

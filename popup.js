@@ -782,6 +782,10 @@ async function paintAll() {
         // Verified after the sweep, not counted before it. If the guard failed,
         // say so here and not only in the log.
         lastAuto.lostSignIns ? ` — ${plural(lastAuto.lostSignIns, "sign-in", "sign-ins")} did NOT survive` : ""
+      }${
+        lastAuto.keptConsent ? `, ${plural(lastAuto.keptConsent, "consent answer", "consent answers")} kept` : ""
+      }${
+        lastAuto.lostConsent ? ` — ${plural(lastAuto.lostConsent, "consent answer", "consent answers")} did NOT survive` : ""
       }, ${ago(lastAuto.at)}</span>` : ""
     }</span></span>
   </div>

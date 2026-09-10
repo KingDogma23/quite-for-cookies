@@ -112,8 +112,10 @@ check('consent: the popup preview and its delete list both spare consent answers
       (popupSrc.match(/!\(prefs\.keepConsent && looksLikeConsent\(c\)\)/g) || []).length === 2,
       'targetsFor() and doomed() must carry the identical predicate');
 check('consent: the tab-close sweep spares them too, and re-counts what it spared',
-      /prefs\.autoKeepConsent && self\.looksLikeConsent\(c\)/.test(bgSrc) && /lostConsent/.test(bgSrc),
-      '"kept" is a claim, and it is checked after the removal');
+      /prefs\.autoKeepConsent && self\.looksLikeConsent\(c\)/.test(bgSrc) &&
+      /keptConsent: keptConsentNow, lostConsent/.test(bgSrc) &&
+      /lastAuto\.lostConsent/.test(popupSrc),
+      '"kept" is a claim; it is checked after the removal AND shown — a re-count nobody can see is no check');
 check('consent: loaded by both callers from one file',
       /importScripts\([^)]*"consent\.js"/.test(bgSrc) &&
       /<script src="consent\.js">/.test(fs.readFileSync(path.join(EXT, 'popup.html'), 'utf8')),
