@@ -201,3 +201,8 @@ that keep a session in local storage will sign you out with it.
   Where the answer lives: DMG (Mail, Metro, inews) and the Guardian keep it in
   localStorage only, so they are untouched by a cookie-only clear and will ask
   again only if "Also clear stored site data" is on.
+- Live reading, 2026-09-10, before the worker was reloaded: the running sweep
+  removed a cookie under a recognised consent name on independent.co.uk and
+  telegraph.co.uk (`test/live-probe.md`) — the fault, reproduced on the real
+  path with controls. The after-reload arm must read "consent survived,
+  control gone" before this version is uploaded.

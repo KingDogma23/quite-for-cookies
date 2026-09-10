@@ -35,6 +35,15 @@
  * the _sp_ prefix, and _sp_facebook is an integration flag. A prefix match
  * would have spared tracking under the label "consent". These are anchored.
  *
+ * Live, on the real path, 2026-09-10 (test/live-probe.md): with the worker
+ * still running the build from before this file existed, closing the last
+ * tab on independent.co.uk and on telegraph.co.uk removed a cookie written
+ * under a recognised consent name along with a control cookie — the fault
+ * this file exists to stop, seen through the tab-close sweep itself. Two
+ * controls held: both probes survive two reloads, and both survive a close
+ * while the site is open in another tab. The after-Reload reading must be
+ * "consent survived, control gone".
+ *
  * The rest of the field is the well-known consent platforms: IAB TCF
  * (euconsent-v2, addtl_consent), OneTrust, Sourcepoint, Didomi, Cookiebot,
  * TrustArc, CookieYes, CookieScript, Osano.
