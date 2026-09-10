@@ -211,6 +211,10 @@ that keep a session in local storage will sign you out with it.
 
 ## 0.23.2 — what changed for the next upload
 
+**SUBMITTED 2026-09-10, in review.** sha256 c80d7aa0…; 19 files, manifest at
+the zip root, no site access at install (`*://*/*` optional only). Permission
+justification for the review form is in the changelog below.
+
 - **Hides pop-ups on UK news sites, one paper at a time.** Twenty papers are
   offered as tick boxes in the popup, and any site can be added. Consent
   dialogs by platform (Sourcepoint, Quantcast, Didomi) and each paper's own
