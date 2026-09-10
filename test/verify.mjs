@@ -78,6 +78,52 @@ check('subdomains collapse to the site, not to the suffix',
 // passing on a hardcoded guess.
 const BROKEN = loadPSL({ sabotage: true });
 const brokenAnswer = BROKEN.registrable('example.co.uk');
+// ---- consent answers survive a clear (consent.js) ------------------------
+// Clearing a site's cookies deletes the cookie that held your answer to its
+// consent pop-up, so the pop-up comes back. consent.js names the cookies that
+// hold that answer, precisely, so they can be spared beside sign-ins.
+function loadConsent({ sabotage = false } = {}) {
+  let src = fs.readFileSync(path.join(EXT, 'consent.js'), 'utf8');
+  if (sabotage) src = src.replace('self.looksLikeConsent = (c) => self.CONSENT_RE.test(c.name);',
+                                  'self.looksLikeConsent = () => false;');
+  const ctx = { self: {} }; vm.createContext(ctx); vm.runInContext(src, ctx);
+  return ctx.self;
+}
+const consent = loadConsent();
+// Observed on real sites 2026-09-03, plus the well-known consent platforms.
+const CONSENT_NAMES = ['ckns_policy', 'ckns_explicit', 'OptanonConsent', 'OptanonAlertBoxClosed',
+  'gdpr', '_sp_su', 'consentUUID', 'usprivacy', 'euconsent-v2', 'addtl_consent',
+  'didomi_token', 'CookieConsent', 'cookieconsent_status', 'cmapi_cookie_privacy'];
+// Names a clear MUST still remove: analytics ids, ad ids, sessions, csrf.
+const NOT_CONSENT = ['_ga', '_gid', '_gat', '_fbp', 'IDE', 'id5id', 'permutive-id', 'sessionid',
+  'csrftoken', '_pk_id.1.abcd', 'ajs_anonymous_id', 'mp_123_mixpanel', 'test_cookie', '__cf_bm'];
+const missed = CONSENT_NAMES.filter((n) => !consent.looksLikeConsent({ name: n }));
+const overMatched = NOT_CONSENT.filter((n) => consent.looksLikeConsent({ name: n }));
+check('consent: every observed consent cookie name is recognised', missed.length === 0,
+      missed.length ? `missed: ${missed.join(', ')}` : `${CONSENT_NAMES.length} names`);
+check('consent: no tracking, session or csrf name is mistaken for consent', overMatched.length === 0,
+      overMatched.length ? `over-matched: ${overMatched.join(', ')}` : `${NOT_CONSENT.length} names refused`);
+// The exemption must be in BOTH callers, and in both popup predicates — the
+// preview and the sweep must agree, or the preview promises one thing and the
+// sweep does another.
+const popupSrc = fs.readFileSync(path.join(EXT, 'popup.js'), 'utf8');
+const bgSrc = fs.readFileSync(path.join(EXT, 'background.js'), 'utf8');
+check('consent: the popup preview and its delete list both spare consent answers',
+      (popupSrc.match(/!\(prefs\.keepConsent && looksLikeConsent\(c\)\)/g) || []).length === 2,
+      'targetsFor() and doomed() must carry the identical predicate');
+check('consent: the tab-close sweep spares them too, and re-counts what it spared',
+      /prefs\.autoKeepConsent && self\.looksLikeConsent\(c\)/.test(bgSrc) && /lostConsent/.test(bgSrc),
+      '"kept" is a claim, and it is checked after the removal');
+check('consent: loaded by both callers from one file',
+      /importScripts\([^)]*"consent\.js"/.test(bgSrc) &&
+      /<script src="consent\.js">/.test(fs.readFileSync(path.join(EXT, 'popup.html'), 'utf8')),
+      'two copies would drift');
+// CONTROL. Sabotage the predicate and require the recognition check to fail.
+const broken = loadConsent({ sabotage: true });
+check('CONTROL: a predicate that recognises nothing FAILS the recognition check — it can fail',
+      CONSENT_NAMES.filter((n) => !broken.looksLikeConsent({ name: n })).length > 0,
+      'so the check reads consent.js, not its own list');
+
 check('CONTROL: sabotaging the suffix list changes the answer — so these checks read it',
   brokenAnswer !== 'example.co.uk',
   `with co.uk removed, example.co.uk -> ${brokenAnswer} (was example.co.uk)`);

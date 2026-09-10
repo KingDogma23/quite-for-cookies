@@ -183,3 +183,14 @@ byte-identical, restored from local storage. Clearing site data alongside is
 therefore offered as a separate option, defaulting to off, with both consequences
 stated where it is turned on — trackers restore themselves without it, and sites
 that keep a session in local storage will sign you out with it.
+
+## 0.22.9 — what changed for the next upload
+
+- **Keeps cookie-consent answers by default** (new option, on for both the
+  tab-close sweep and the manual clear, untick to remove them). Clearing a site's
+  cookies deleted the cookie that remembered your answer to its consent pop-up,
+  so the pop-up came back on every site. The cookies that hold that answer are
+  named precisely in `consent.js` and spared beside sign-ins, with the same
+  after-the-fact re-count. Sites that keep the answer in localStorage
+  (Sourcepoint, Quantcast — measured) will still ask; the option says so.
+- No new permissions.

@@ -21,7 +21,7 @@
 // version of the LOADED extension rather than of the code running, so after a
 // reload an old popup would report the new version. package.sh refuses to build
 // if this disagrees with manifest.json.
-const VERSION = "0.22.8";
+const VERSION = "0.22.9";
 
 const $ = (s) => document.querySelector(s);
 const pattern = (domain) => `*://*.${domain}/*`;
@@ -59,6 +59,7 @@ const ALL_SITES = "*://*/*";
  * curated list was doing a job it could not do. See targetsFor().
  */
 const { looksLikeSignIn } = self;   // signin.js — one definition, two callers
+const { looksLikeConsent } = self;  // consent.js — same arrangement, same reason
 
 const esc = (s) => String(s).replace(/[<>&"]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" })[c]);
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
@@ -623,8 +624,8 @@ async function paintScan() {
 async function readGlobalPrefs() {
   const { globalPrefs } = await chrome.storage.local.get("globalPrefs");
   return {
-    mode: "trackers", keepLogins: true, autoClear: false, autoKeepLogins: true,
-    autoClearStorage: false, spared: [], ...(globalPrefs || {}),
+    mode: "trackers", keepLogins: true, keepConsent: true, autoClear: false, autoKeepLogins: true,
+    autoKeepConsent: true, autoClearStorage: false, spared: [], ...(globalPrefs || {}),
   };
 }
 
@@ -734,7 +735,12 @@ function targetsFor(prefs) {
     // as controls, which were correctly spared.
     //
     // An invariant asserted in a comment is not an invariant. This is the code.
-    .filter((c) => (prefs.mode === "everything" || isTracker(c)) && !(prefs.keepLogins && looksLikeSignIn(c)));
+    .filter(
+      (c) =>
+        (prefs.mode === "everything" || isTracker(c)) &&
+        !(prefs.keepLogins && looksLikeSignIn(c)) &&
+        !(prefs.keepConsent && looksLikeConsent(c)),
+    );
 }
 
 async function paintAll() {
@@ -743,7 +749,9 @@ async function paintAll() {
   // Must be the same predicate as targetsFor(), or the preview promises one
   // thing and the sweep does another — which is the whole product.
   const doomed = (c) =>
-    (prefs.mode === "everything" || isTracker(c)) && !(prefs.keepLogins && looksLikeSignIn(c));
+    (prefs.mode === "everything" || isTracker(c)) &&
+    !(prefs.keepLogins && looksLikeSignIn(c)) &&
+    !(prefs.keepConsent && looksLikeConsent(c));
   const trackerCount = state.allGroups.reduce((n, g) => n + g.cookies.filter(isTracker).length, 0);
   const unspared = state.allGroups.filter((g) => !prefs.spared.includes(g.site)).flatMap((g) => g.cookies);
   const loginish = unspared.filter(looksLikeSignIn).length;
@@ -782,6 +790,12 @@ async function paintAll() {
     <span><b>Keep sign-in cookies when it does</b>
     <span>Leaves anything that looks like a login, so closing a tab tidies the
     tracking without logging you out of the site.</span></span>
+  </label>
+  <label class="auto sub">
+    <input type="checkbox" id="autoKeepConsent" ${prefs.autoKeepConsent ? "checked" : ""} ${prefs.autoClear ? "" : "disabled"} />
+    <span><b>Keep cookie-consent answers when it does</b>
+    <span>So the "accept cookies?" pop-up does not come back on every site. Sites that
+    store your answer outside cookies will still ask.</span></span>
   </label>
   <label class="auto sub">
     <input type="checkbox" id="autoClearStorage" ${prefs.autoClearStorage ? "checked" : ""} ${prefs.autoClear ? "" : "disabled"} />
@@ -838,6 +852,12 @@ async function paintAll() {
        <span>Spares cookies that are Secure and HttpOnly, or named like a login. Best effort:
        it now covers the ones that caught us out, but a site with an unusual name can still slip through.</span></span>
      </label>
+     <label class="choice sub">
+       <input type="checkbox" id="keepConsent" ${prefs.keepConsent ? "checked" : ""} />
+       <span><b>Keep cookie-consent answers</b>
+       <span>So the "accept cookies?" pop-up does not come back. Sites that store your answer
+       outside cookies will still ask.</span></span>
+     </label>
      ${autoRow}
      ${logBlock}
      <div class="section">Sites</div>
@@ -874,6 +894,14 @@ async function paintAll() {
   });
   $("#autoClearStorage").addEventListener("change", async (e) => {
     await saveGlobalPrefs({ autoClearStorage: e.target.checked });
+    paintAll();
+  });
+  $("#autoKeepConsent").addEventListener("change", async (e) => {
+    await saveGlobalPrefs({ autoKeepConsent: e.target.checked });
+    paintAll();
+  });
+  $("#keepConsent").addEventListener("change", async (e) => {
+    await saveGlobalPrefs({ keepConsent: e.target.checked });
     paintAll();
   });
   $("#keepLogins").addEventListener("change", async (e) => {

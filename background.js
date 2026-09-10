@@ -19,7 +19,7 @@
  *     indistinguishable from one that never runs, and this one runs where
  *     nobody is watching. Every sweep is recorded and shown in the popup.
  */
-importScripts("psl-data.js", "psl.js", "signin.js");
+importScripts("psl-data.js", "psl.js", "signin.js", "consent.js");
 
 /**
  * Every decision this worker makes is recorded, because it runs where nobody
@@ -182,7 +182,7 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
   note(`tab ${tabId} closed — was on ${site}`, "trace");
 
   const { globalPrefs } = await chrome.storage.local.get("globalPrefs");
-  const prefs = { autoClear: false, autoKeepLogins: true, autoClearStorage: false, spared: [], ...(globalPrefs || {}) };
+  const prefs = { autoClear: false, autoKeepLogins: true, autoKeepConsent: true, autoClearStorage: false, spared: [], ...(globalPrefs || {}) };
   if (!prefs.autoClear) return note(`${site}: switch is off`);
   if (prefs.spared.includes(site)) return note(`${site}: on the spared list, left alone`);
 
@@ -205,10 +205,21 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
   const present = await getAllCookies({ domain: site });
   // Sign-ins are spared by default. Closing a tab should tidy the tracking, not
   // evict you from the site — and nobody is watching when this runs.
+  // Consent answers are spared beside them, for the same reason: closing a tab
+  // should tidy the tracking, not make every site ask "accept cookies?" again.
+  // Precise by name (consent.js), never by the sign-in heuristic.
+  const sparedBy = (c) =>
+    (prefs.autoKeepLogins && self.looksLikeSignIn(c)) ||
+    (prefs.autoKeepConsent && self.looksLikeConsent(c));
   const kept = prefs.autoKeepLogins ? present.filter(self.looksLikeSignIn).length : 0;
-  const before = prefs.autoKeepLogins ? present.filter((c) => !self.looksLikeSignIn(c)) : present;
+  const keptConsent = prefs.autoKeepConsent
+    ? present.filter((c) => self.looksLikeConsent(c) && !(prefs.autoKeepLogins && self.looksLikeSignIn(c))).length
+    : 0;
+  const before = present.filter((c) => !sparedBy(c));
   if (!before.length && !(prefs.autoClearStorage && siteOrigins.length)) {
-    return note(`${site}: ${present.length} cookie(s) found, ${kept} kept as sign-ins, nothing left to remove`);
+    return note(
+      `${site}: ${present.length} cookie(s) found, ${kept} kept as sign-ins, ${keptConsent} kept as consent answers, nothing left to remove`,
+    );
   }
 
   for (const c of before) {
@@ -239,6 +250,12 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
   const spared = prefs.autoKeepLogins ? present.filter(self.looksLikeSignIn) : [];
   const keptNow = spared.filter((c) => still.has(`${c.storeId}|${c.domain}|${c.path}|${c.name}`)).length;
   const lostSignIns = spared.length - keptNow;
+  // Same re-count for consent answers: "kept" is a claim, and it is checked.
+  const sparedConsent = prefs.autoKeepConsent
+    ? present.filter((c) => self.looksLikeConsent(c) && !(prefs.autoKeepLogins && self.looksLikeSignIn(c)))
+    : [];
+  const keptConsentNow = sparedConsent.filter((c) => still.has(`${c.storeId}|${c.domain}|${c.path}|${c.name}`)).length;
+  const lostConsent = sparedConsent.length - keptConsentNow;
 
   /**
    * Cookies alone are not enough, and this was measured rather than assumed: on

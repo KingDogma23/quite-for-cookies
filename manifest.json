@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Quite for Cookies \u2014 delete cookies and site data, or clear on tab close",
   "short_name": "Quite for Cookies",
-  "version": "0.22.8",
+  "version": "0.22.9",
   "description": "Cookie cleaner that shows you what it will delete, then checks it went. Auto-delete cookies on tab close, with a whitelist.",
   "permissions": [
     "activeTab",

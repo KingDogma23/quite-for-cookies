@@ -4,6 +4,8 @@ Shows exactly what a website has stored on your machine — cookies, local
 storage, databases, caches — lets you choose what goes, and then checks
 afterwards that it actually went.
 
+**Consent answers are kept by default.** Clearing a site's cookies deletes the cookie that remembered your answer to its "accept cookies?" pop-up, so the pop-up comes back. The cookies that hold that answer are now spared — beside sign-ins, and unticked the same way if you would rather they went. Sites that store the answer outside cookies will still ask.
+
 ## Why another one
 
 Most cleaners delete first and tell you nothing. Two things this does instead:
